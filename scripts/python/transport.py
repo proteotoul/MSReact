@@ -26,11 +26,14 @@ class Transport:
         Sends messages over the WebSocket protocol
     """
     class Commands(IntEnum):
-        START_SCAN_TX       = 1
-        STOP_SCAN_TX        = 2
-        SCAN_TX             = 3
-        FINISHED_SCAN_TX    = 4
-        SHUT_DOWN_SERVER    = 5
+        START_SCAN_TX           = 1
+        STOP_SCAN_TX            = 2
+        SCAN_TX                 = 3
+        FINISHED_SCAN_TX        = 4
+        SHUT_DOWN_SERVER        = 5
+        CUSTOM_SCAN             = 6
+        GET_POSSIBLE_PARAMS     = 7
+        POSSIBLE_PARAMS         = 8
     
     def __init__(self, transport_layer):
         self._tl = transport_layer
@@ -43,6 +46,11 @@ class Transport:
         elif (self.Commands.STOP_SCAN_TX == cmd):
             await self._tl.send(cmd.to_bytes(1, 'big'))
         elif (self.Commands.SHUT_DOWN_SERVER == cmd):
+            await self._tl.send(cmd.to_bytes(1, 'big'))
+        elif (self.Commands.CUSTOM_SCAN == cmd):
+            msg = cmd.to_bytes(1, 'big') + msgpack.packb(payload)
+            await self._tl.send(msg)
+        elif (self.Commands.GET_POSSIBLE_PARAMS == cmd):
             await self._tl.send(cmd.to_bytes(1, 'big'))
         else:
             pass
