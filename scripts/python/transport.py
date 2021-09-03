@@ -61,7 +61,8 @@ class Transport:
         # Parse commands
         cmd = self.Commands(msg[0])
         payload = None
-        if (self.Commands.SCAN_TX == cmd):
+        if ((self.Commands.SCAN_TX == cmd) or
+            (self.Commands.POSSIBLE_PARAMS == cmd)):
             payload = msgpack.unpackb(msg[1:])
             
         return (cmd, payload)
