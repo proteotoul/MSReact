@@ -34,6 +34,8 @@ class Transport:
         CUSTOM_SCAN             = 6
         GET_POSSIBLE_PARAMS     = 7
         POSSIBLE_PARAMS         = 8
+        SUBSCRIBE_TO_SCANS      = 9
+        UNSUBSCRIBE_FROM_SCANS  = 10
     
     def __init__(self, transport_layer):
         self._tl = transport_layer
@@ -41,6 +43,17 @@ class Transport:
             self._tl.connect(self._tl.uri)
         
     async def send_command(self, cmd, payload = None):
+        
+        if (cmd in self.Commands):
+            if (None == payload):
+                await self._tl.send(cmd.to_bytes(1, 'big'))
+            else:
+                msg = cmd.to_bytes(1, 'big') + msgpack.packb(payload)
+                await self._tl.send(msg)
+        else:
+            #TODO - Exception
+            pass
+        '''    
         if (self.Commands.START_SCAN_TX == cmd):
             await self._tl.send(cmd.to_bytes(1, 'big'))
         elif (self.Commands.STOP_SCAN_TX == cmd):
@@ -52,9 +65,12 @@ class Transport:
             await self._tl.send(msg)
         elif (self.Commands.GET_POSSIBLE_PARAMS == cmd):
             await self._tl.send(cmd.to_bytes(1, 'big'))
+        elif (self.Commands.SUBSCRIBE_TO_SCANS == cmd):
+            await self._tl.send(cmd.to_bytes(1, 'big'))
         else:
             pass
             # TODO - Throw an exception
+            '''
     
     async def receive_command(self):
         msg = await self._tl.receive()
