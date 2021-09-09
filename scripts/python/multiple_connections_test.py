@@ -1,3 +1,4 @@
+import time
 import asyncio
 import websockets as ws
 import ws_iface_exception as wsie
@@ -11,29 +12,25 @@ async def main():
     
     async with WebSocketInterface(uri) as ws_iface:
         transport = Transport(ws_iface)
-        
-        # Get possible parameters
-        await transport.send_command(transport.Commands.GET_POSSIBLE_PARAMS)
-        print('Get params message was sent')
-        cmd, payload = await transport.receive_command()
-        print(f'Command: {cmd.name}\nPayload:{payload}')
 
         # Subscribe for scans
         await transport.send_command(transport.Commands.SUBSCRIBE_TO_SCANS)
         
         # Send start command
-        await transport.send_command(transport.Commands.START_SCAN_TX)
         rx_in_progress = True
+        keep_being_notified = True
+        i = 0
         while rx_in_progress:
             try:
                 cmd, payload = await transport.receive_command()
-                await transport.send_command(transport.Commands.CUSTOM_SCAN, custom_scan)
-                if ((payload != None) and (payload['CentroidCount'] == 0)):
-                    print('Received MS2 scan.')
-                    print(f'Command: {cmd.name}\nPayload:{payload}')
-                if (transport.Commands.FINISHED_SCAN_TX == cmd):
-                    await transport.send_command(transport.Commands.SHUT_DOWN_SERVER)
-                    print('Shutting down server...')
+                print(f'Command: {cmd.name}\n')
+                if (i <  5):
+                    i += 1
+                elif keep_being_notified:
+                    keep_being_notified = False
+                    await transport.send_command(transport.Commands.UNSUBSCRIBE_FROM_SCANS)
+                else:
+                    pass
             except ws.exceptions.ConnectionClosed:
                 print('WebSocket connection closed. '
                       'Shutting down application....')
