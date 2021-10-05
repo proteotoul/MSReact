@@ -53,24 +53,6 @@ class Transport:
         else:
             #TODO - Exception
             pass
-        '''    
-        if (self.Commands.START_SCAN_TX == cmd):
-            await self._tl.send(cmd.to_bytes(1, 'big'))
-        elif (self.Commands.STOP_SCAN_TX == cmd):
-            await self._tl.send(cmd.to_bytes(1, 'big'))
-        elif (self.Commands.SHUT_DOWN_SERVER == cmd):
-            await self._tl.send(cmd.to_bytes(1, 'big'))
-        elif (self.Commands.CUSTOM_SCAN == cmd):
-            msg = cmd.to_bytes(1, 'big') + msgpack.packb(payload)
-            await self._tl.send(msg)
-        elif (self.Commands.GET_POSSIBLE_PARAMS == cmd):
-            await self._tl.send(cmd.to_bytes(1, 'big'))
-        elif (self.Commands.SUBSCRIBE_TO_SCANS == cmd):
-            await self._tl.send(cmd.to_bytes(1, 'big'))
-        else:
-            pass
-            # TODO - Throw an exception
-            '''
     
     async def receive_command(self):
         msg = await self._tl.receive()
