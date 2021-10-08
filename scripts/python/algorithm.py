@@ -6,23 +6,29 @@ class Algorithm:
 
     Attributes
     ----------
-    request_scan_callback : function
-        WebSocket uri (universal resource identifier) to connect to
+    scan_request_action : function
+        A function that the algorithm can call when it would like to request a 
+        custom scan
     received_scan_format : dict
         The format in which the scans will be received from the Mass 
         Spectrometer instrument
     requested_scan_format : dict
         The format in which a scan can be requested from the Mass 
         Spectrometer instrument
-        
+    acquisition_method : Method
+        The acquisition method to validate and update the default method to
+    acquisition_sequence : Sequence
+            The acquisition sequence to validate and update the default 
+            sequence to
+            
     Methods
     -------
     consume_scan(scan)
         Consumes a scan that was received from the Mass Spectrometer Instrument
-    update_and_validate_acq_meth(method):
-        Updates and validates the acquisition method 
-    update_and_validate_acq_seq(sequence):
-        Updatest and validates the acquisition sequence
+    validate_methods_and_sequence(methods, sequence):
+        Validates that the acquisition method(s) and sequence is appropriate
+        for the algorithm and updates the algorithm's default method(s) and 
+        sequence for that validated method(s) and sequences.
     algorithm_body():
         The body of the algorithm that will be executed
     """
@@ -36,58 +42,56 @@ class Algorithm:
     """Name of the algorithm. This is a mandatory field for the algorithms"""
     ALGORITHM_NAME = 'abstract_algorithm'
     
-    def __init__(self, request_scan_cb, rx_scan_format, req_scan_format):
-        """
-        Parameters
-        ----------
-        request_scan_cb : function
-            WebSocket uri (universal resource identifier) to connect to
-        rx_scan_format : dict
-            The format in which the scans will be received from the Mass 
-            Spectrometer instrument
-        req_scan_format : dict
-            The format in which a scan can be requested from the Mass 
-            Spectrometer instrument
-        acquisition_method: dict
-            Acquisition method to use for mass spectrometer acqusition
-        acquisition_sequence: dict
-            Acquisition sequence to use for mass spectrometer acquisitions
-        """
-        self.request_scan_callback = request_scan_cb
-        self.received_scan_format = rx_scan_format
-        self.requested_scan_format = req_scan_format
+    def __init__(self):
         self.acquisition_method = DEFAULT_ACQUISITION_METHOD
         self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
         
-    def update_and_validate_acq_meth(self, method):
+    def set_scan_request_action(self, scan_req_act):
+        """
+        Parameters
+        ----------
+        scan_req_act : function
+            A function that the algorithm can call when it would like to 
+            request a custom scan
+        """
+        self.scan_request_action = scan_req_act
+        
+    def validate_methods_and_sequence(self, methods, sequence):
         """
         Parameters
         ----------
         method : Method
-            The method to validate and update the default method to
+            The acquisition method to validate and update the default method to
+        sequence : Sequence
+            The acquisition sequence to validate and update the default 
+            sequence to
         Returns
         -------
-        Bool: True if the update and validation of the acquisition method was
-              successful and False if it failed
+        Bool: True if the update and validation of the acquisition method and 
+              sequence was successful and False if it failed
         """
-        self.acquisition_method = method
         success = True
+        self.acquisition_method = method
+        self.acquisition_sequence = sequence
         return success
         
-    def update_and_validate_acq_seq(self, sequence):
+    def validate_scan_formats(self, rx_scan_format, req_scan_format):
         """
         Parameters
         ----------
-        sequence : Sequence
-            Original acquisition method. The update_acq_meth function can
-            overwrite the method if neccessary
+        rx_scan_format : Dict
+            The acquisition method to validate and update the default method to
+        req_scan_format : Dict
+            The acquisition sequence to validate and update the default 
+            sequence to
         Returns
         -------
-        Bool: True if the update and validation of the acquisition sequence was 
-              successful and False if it failed
+        Bool: True if the update and validation of the received scan format and 
+              the requested scan format was successful and False if it failed
         """
-        self.acquisition_sequence = sequence
         success = True
+        self.received_scan_format = rx_scan_format
+        self.requested_scan_format = req_scan_format
         return success
         
     def consume_scan(self, scan):

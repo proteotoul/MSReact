@@ -1,9 +1,9 @@
 import enum
 import threading
 
-class AlgorithmExecuter:
+class AlgorithmRunner:
     """
-    This module executes the algorithms
+    This module runs the algorithms
 
     ...
 
@@ -34,7 +34,7 @@ class AlgorithmExecuter:
         method_error    = 1
         sequence_error  = 2
     
-    def __init__(self, algorithm, method, sequence):
+    def __init__(self, algorithm, method, sequence, scan_req_act):
         """
         Parameters
         ----------
@@ -48,25 +48,27 @@ class AlgorithmExecuter:
             Spectrometer instrument
         """
         self.algorithm = algorithm
-        self.algorithm_thread = 
-            threading.Thread(target=self.algorithm.algorithm_body)
         self.method = method
         self.sequence = sequence
+        self.req_scan_act = req_scan_act
         
-    def configure_algorithm(self):
-        result = self.ConfigErrors.no_error
-        success = self.algorithm.update_and_validate_acq_meth()
-        if not success:
-            result = self.ConfigErrors.method_error 
-        else:
-            success = self.algorithm.update_and_validate_acq_seq()
-            if  not success:
-                result = self.ConfigErrors.sequence_error
-        return result
+        self.algorithm_thread = 
+            threading.Thread(target=self.algorithm.algorithm_body)
+        
+    def configure_algorithm(self, methods, sequence):
+        set_scan_request_action(self.scan_request_action)
+        success = \ 
+            self.algorithm.validate_scan_formats()
+        success = \
+            self.algorithm.validate_methods_and_sequence(methods, sequence)
+        return success
         
     def run_algorithm(self):
-        self.algorithm.start()
+        self.algorithm_thread.start()
         
     def stop_algorithm(self):
         self.algorithm.join()
+        
+    def scan_request_action(self, request):
+        self.scan_req_act(request)
         

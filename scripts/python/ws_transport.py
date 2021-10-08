@@ -1,12 +1,13 @@
 import asyncio
 from transport_layer import TransportLayer
 import websockets as ws
-import ws_iface_exception as wsie
+import ws_transport_exception as wste
 
 
-class WebSocketInterface(TransportLayer):
+class WebSocketTransport(TransportLayer):
     """
-    A class providing an interface for WebSocket communication
+    A class creating a transport layer using WebSocket as transport for 
+    communication
 
     ...
 
@@ -60,9 +61,9 @@ class WebSocketInterface(TransportLayer):
             self.ws_protocol = await ws.connect(uri=self.uri)
             self.state = self.TL_STATE_CONNECTED
         else:
-            raise wsie.WebSocketInterfaceException(
+            raise wste.WebSocketTransportException(
                     "Cannot connect to uri when already connected!", 
-                    "Invalid WebSocketInterface State")
+                    "Invalid WebSocketTransport State")
 
     async def disconnect(self):
         """Disconnects from a uri"""
@@ -70,9 +71,9 @@ class WebSocketInterface(TransportLayer):
             await self.ws_protocol.close()
             self.state = self.TL_STATE_DISCONNECTED
         else:
-            raise wsie.WebSocketInterfaceException(
+            raise wste.WebSocketTransportException(
                 "Cannot disconnect from uri when already disconnected!", 
-                "Invalid WebSocketInterface State")
+                "Invalid WebSocketTransport State")
 
     async def receive(self):
         """Listens for messages over the WebSocket protocol"""
@@ -81,9 +82,9 @@ class WebSocketInterface(TransportLayer):
             message = await self.ws_protocol.recv()
             self.state = self.TL_STATE_CONNECTED
         else:
-            raise wsie.WebSocketInterfaceException(
+            raise wste.WebSocketTransportException(
                 "Cannot listen on WebSocket when not connected!",
-                "Invalid WebSocketInterface State")
+                "Invalid WebSocketTransport State")
         return message
 
     async def send(self, message):
@@ -98,18 +99,18 @@ class WebSocketInterface(TransportLayer):
             await self.ws_protocol.send(message)
             self.state = self.TL_STATE_CONNECTED
         else:
-            raise wsie.WebSocketInterfaceException(
+            raise wste.WebSocketTransportException(
                 "Cannot send on WebSocket when not connected!",
-                "Invalid WebSocketInterface State")
+                "Invalid WebSocketTransport State")
                 
 
 async def main():
     uri = f'ws://localhost:4649/SWSS'
     eob = "END OF BROADCAST"
-    async with WebSocketInterface(uri) as ws_iface:
+    async with WebSocketTransport(uri) as ws_transport:
         receiving = True
         while receiving:
-            message = await ws_iface.receive()
+            message = await ws_transport.receive()
             print(f'< {message} >')
             if message == eob:
                 receiving = False

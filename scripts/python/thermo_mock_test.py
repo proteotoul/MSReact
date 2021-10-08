@@ -1,38 +1,38 @@
 import asyncio
 import websockets as ws
-import ws_iface_exception as wsie
-from transport import Transport
+import ws_transport_exception as wste
+from protocol import Protocol
 from transport_layer import TransportLayer
-from ws_iface import WebSocketInterface
+from ws_transport import WebSocketTransport
 
 async def main():
     uri = f'ws://localhost:4649/SWSS'
     custom_scan = {"Precursor_mz" : "753.8076782226562"}
     
-    async with WebSocketInterface(uri) as ws_iface:
-        transport = Transport(ws_iface)
+    async with WebSocketTransport(uri) as ws_transport:
+        protocol = Protocol(ws_transport)
         
         # Get possible parameters
-        await transport.send_command(transport.Commands.GET_POSSIBLE_PARAMS)
+        await protocol.send_command(protocol.Commands.GET_POSSIBLE_PARAMS)
         print('Get params message was sent')
-        cmd, payload = await transport.receive_command()
+        cmd, payload = await protocol.receive_command()
         print(f'Command: {cmd.name}\nPayload:{payload}')
 
         # Subscribe for scans
-        await transport.send_command(transport.Commands.SUBSCRIBE_TO_SCANS)
+        await protocol.send_command(protocol.Commands.SUBSCRIBE_TO_SCANS)
         
         # Send start command
-        await transport.send_command(transport.Commands.START_SCAN_TX)
+        await protocol.send_command(protocol.Commands.START_SCAN_TX)
         rx_in_progress = True
         while rx_in_progress:
             try:
-                cmd, payload = await transport.receive_command()
-                await transport.send_command(transport.Commands.CUSTOM_SCAN, custom_scan)
+                cmd, payload = await protocol.receive_command()
+                await protocol.send_command(protocol.Commands.CUSTOM_SCAN, custom_scan)
                 if ((payload != None) and (payload['CentroidCount'] == 0)):
                     print('Received MS2 scan.')
                     print(f'Command: {cmd.name}\nPayload:{payload}')
-                if (transport.Commands.FINISHED_SCAN_TX == cmd):
-                    await transport.send_command(transport.Commands.SHUT_DOWN_SERVER)
+                if (protocol.Commands.FINISHED_SCAN_TX == cmd):
+                    await protocol.send_command(protocol.Commands.SHUT_DOWN_SERVER)
                     print('Shutting down server...')
             except ws.exceptions.ConnectionClosed:
                 print('WebSocket connection closed. '

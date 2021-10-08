@@ -1,42 +1,37 @@
 import asyncio
 import os
-import subprocess
 from subprocess import Popen, CREATE_NEW_CONSOLE
-import websockets as ws
-import ws_iface_exception as wsie
-from transport import Transport
-from transport_layer import TransportLayer
-from ws_iface import WebSocketInterface
 
 class MockController:
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
-    START_MOCK_CMD = \
-        'start /wait cmd /c D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ' + \
-        '"D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw" 1'     
-    START_MOCK_NON_BLOCK_CMD = \
-            ['cmd', '/c', 'D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ',
-            "D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw", '1']
+    DEFAULT_RAW_FILE_LIST = ["D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
+    DEFAULT_SCAN_INTERVAL = 1
+    MOCK_CMD_BEGIN = \
+        'start /wait cmd /c D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe '
+    MOCK_NON_BLOCK_CMD_BEGIN = \
+        ['cmd', '/c', 'D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ']
 
-    def __init__(self, uri=DEFAULT_URI):
+    def __init__(self, 
+                 uri=DEFAULT_URI, 
+                 raw_file_list = DEFAULT_RAW_FILE_LIST, 
+                 scan_interval = DEFAULT_SCAN_INTERVAL):
         self.uri = uri
-    
-    async def __aenter__(self):
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        self.raw_file_list = raw_file_list
+        self.scan_interval = scan_interval 
         
     def run_mock(self):
-        os.system(self.START_MOCK_CMD)
+        cmd = self.MOCK_CMD_BEGIN + ' '.join(raw_file_list) + str(scan_interval)
+        os.system(cmd)
         
     def run_mock_nonblock(self):
-        return Popen(self.START_MOCK_NON_BLOCK_CMD,
-                     creationflags=CREATE_NEW_CONSOLE)
+        cmd = self.MOCK_NON_BLOCK_CMD_BEGIN + self.raw_file_list + [str(self.scan_interval)]
+        return Popen(cmd, creationflags=CREATE_NEW_CONSOLE)
         
     async def run_mock_async(self):
     # TODO - This is not working yet
+        cmd = self.MOCK_CMD_BEGIN + ' '.join(raw_file_list) + str(scan_interval)
         proc = await asyncio.create_subprocess_shell(
-            self.START_MOCK_CMD,
+            cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE)          
         
