@@ -1,14 +1,18 @@
 import argparse
 import asyncio
+import multiprocessing
+import time
 import websockets as ws
 import ws_transport_exception as wste
 from protocol import Protocol
 from transport_layer import TransportLayer
 from ws_transport import WebSocketTransport
 from algorithm import Algorithm
-from algorithm_list import algorithm_list
+from algorithm_runner import AlgorithmRunner
+from algorithm_list import AlgorithmList
 from mock_controller import MockController
 from instrument_controller import InstrumentController
+from concurrent.futures import ProcessPoolExecutor
 
 VERSION = 'v0.1'
 
@@ -16,6 +20,10 @@ class ThermoMockClient:
 
     DEFAULT_MOCK_URI = f'ws://localhost:4649/SWSS'
     def __init__(self):
+        self.algo_list = AlgorithmList()
+        self.algorithm = None
+        self.scan_queue = multiprocessing.Manager().Queue()
+        self.req_queue = multiprocessing.Manager().Queue()
         pass
         
     def parse_client_arguments(self):
@@ -24,8 +32,7 @@ class ThermoMockClient:
         parser.add_argument('-v', '--version', action='version', 
                             version = VERSION,
                             help='prints the version of the application')
-        algorithm_choices = \
-            [Algorithm.ALGORITHM_NAME for Algorithm in algorithm_list]
+        algorithm_choices = self.algo_list.get_available_names()
         parser.add_argument('alg', choices = algorithm_choices,
                             metavar = 'algorithm', default = 'monitor',
                             help=f'algorithm to use during the acquisition, \
@@ -60,54 +67,70 @@ class ThermoMockClient:
 
         return parser.parse_args()
         
-
-    async def main_real(self, args):
-        print(f'Entered address: {args.address}')
+    async def config_instrument(self, args):
+        success = False
         
-    async def main_mock(self, args):
-        print(f'Selected raw files: {args.raw_files}')
-        print(f'Selected scan interval: {args.scan_interval}')
+        self.ws_transport = WebSocketTransport(self.DEFAULT_MOCK_URI)
+        self.protocol = Protocol(self.ws_transport)
+        self.inst_cont = InstrumentController(self.ws_transport,
+                                              self.protocol,
+                                              self.scan_queue,
+                                              self.req_queue)
+        await self.inst_cont.connect_to_instrument(self.DEFAULT_MOCK_URI)
+        # TODO - Remove this if it's not necessary
+        await asyncio.sleep(1)
+        possible_parameters = await self.inst_cont.get_possible_params_async()
         
-        mock_controller = MockController(raw_file_list = args.raw_files,
-                                         scan_interval = args.scan_interval)
-                                         
-        mock_controller.run_mock_nonblock()
-
-        async with WebSocketTransport(self.DEFAULT_MOCK_URI) as ws_transport:
-            protocol = Protocol(ws_transport)
-            inst_cont = InstrumentController()
-            
-            # Get possible parameters
-            await protocol.send_command(protocol.Commands.GET_POSSIBLE_PARAMS)
-            print('Get params message was sent')
-            cmd, payload = await protocol.receive_command()
-            print(f'Command: {cmd.name}\nPayload:{payload}')
-
-            # Subscribe for scans
-            await protocol.send_command(protocol.Commands.SUBSCRIBE_TO_SCANS)
-            
-            # Send start command
-            await protocol.send_command(protocol.Commands.START_SCAN_TX)
-            rx_in_progress = True
-            while rx_in_progress:
-                try:
-                    cmd, payload = await protocol.receive_command()
-                    if (protocol.Commands.FINISHED_SCAN_TX == cmd):
-                        await protocol.send_command(protocol.Commands.SHUT_DOWN_SERVER)
-                        print('Shutting down server...')
-                except ws.exceptions.ConnectionClosed:
-                    print('WebSocket connection closed. '
-                          'Shutting down application....')
-                    rx_in_progress = False
+        await self.inst_cont.subscribe_to_scans_async()
         
-
+        algorithm_type = self.algo_list.find_by_name(args.alg)
+        if algorithm_type is not None:
+            self.algorithm = algorithm_type()
+        if self.algorithm is not None:
+            self.algorithm_runner = AlgorithmRunner(self.algorithm, 
+                                                    None,
+                                                    None,
+                                                    self.scan_queue,
+                                                    self.req_queue)
+            success = \
+                self.algorithm_runner.configure_and_validate_algorithm(None, 
+                                                                       None,
+                                                                       None,
+                                                                       possible_parameters)
+        return success
+        
+        
+    async def mock_instrument_start(self):
+        await self.inst_cont.mock_start_scan_tx_async()
+        await self.inst_cont.start_listening_for_scans()
+        
+    def run_async_as_sync(self, coroutine, args):
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(coroutine(*args))
+        return result   
+        
 if __name__ == "__main__":
     client = ThermoMockClient()
     args = client.parse_client_arguments()
     print(f'Selected algorithm: {args.alg}')
     print(f'Selected sub-command: {args.command}')
     if ('real' == args.command):
-        main = client.main_real
+        print("Not implemented.")
     elif ('mock' == args.command):
-        main = client.main_mock
-    asyncio.get_event_loop().run_until_complete(main(args))
+        print(f'Selected raw files: {args.raw_files}')
+        print(f'Selected scan interval: {args.scan_interval}')
+        
+        mock_controller = MockController(raw_file_list = args.raw_files,
+                                         scan_interval = args.scan_interval)                                 
+        mock_controller.run_mock_nonblock()
+    
+        result = client.run_async_as_sync(client.config_instrument, (args,))
+    
+        if result:
+            loop = asyncio.get_event_loop()
+            executor = ProcessPoolExecutor()
+            algo_proc = \
+                loop.run_in_executor(executor, client.algorithm.algorithm_body)
+            loop.run_until_complete(asyncio.gather(
+                                        client.mock_instrument_start(), 
+                                        algo_proc))

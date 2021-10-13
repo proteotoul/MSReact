@@ -46,7 +46,7 @@ class Algorithm:
         self.acquisition_method = DEFAULT_ACQUISITION_METHOD
         self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
         
-    def set_scan_request_action(self, scan_req_act):
+    def configure_algorithm(self, fetch_received_scan, request_scan):
         """
         Parameters
         ----------
@@ -54,7 +54,8 @@ class Algorithm:
             A function that the algorithm can call when it would like to 
             request a custom scan
         """
-        self.scan_request_action = scan_req_act
+        self.fetch_received_scan = fetch_received_scan
+        self.request_scan = request_scan
         
     def validate_methods_and_sequence(self, methods, sequence):
         """
@@ -93,15 +94,6 @@ class Algorithm:
         self.received_scan_format = rx_scan_format
         self.requested_scan_format = req_scan_format
         return success
-        
-    def consume_scan(self, scan):
-        """
-        Parameters
-        ----------
-        scan : dict
-            Scan received from the Mass Spectrometer Instrument
-        """
-        pass
         
     def algorithm_body(self):
         pass

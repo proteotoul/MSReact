@@ -1,5 +1,8 @@
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 import enum
-import threading
+import multiprocessing
+from queue import Empty, Full
 
 class AlgorithmRunner:
     """
@@ -34,7 +37,7 @@ class AlgorithmRunner:
         method_error    = 1
         sequence_error  = 2
     
-    def __init__(self, algorithm, method, sequence, scan_req_act):
+    def __init__(self, algorithm, method, sequence, scan_queue, req_queue):
         """
         Parameters
         ----------
@@ -50,25 +53,30 @@ class AlgorithmRunner:
         self.algorithm = algorithm
         self.method = method
         self.sequence = sequence
-        self.req_scan_act = req_scan_act
+        self.scan_queue = scan_queue
+        self.req_queue = req_queue
         
-        self.algorithm_thread = 
-            threading.Thread(target=self.algorithm.algorithm_body)
-        
-    def configure_algorithm(self, methods, sequence):
-        set_scan_request_action(self.scan_request_action)
-        success = \ 
-            self.algorithm.validate_scan_formats()
+    def configure_and_validate_algorithm(self, methods, sequence, rx_scan_format, req_scan_format):
+        self.algorithm.configure_algorithm(self.get_scan, self.request_scan)
+        success = \
+            self.algorithm.validate_scan_formats(rx_scan_format, req_scan_format)
         success = \
             self.algorithm.validate_methods_and_sequence(methods, sequence)
         return success
         
-    def run_algorithm(self):
-        self.algorithm_thread.start()
+    def get_algorithm_process(self):
+        loop = asyncio.get_event_loop()
+        executor = ProcessPoolExecutor()
+        self.algorithm_process = \
+            loop.run_in_executor(executor, self.algorithm.algorithm_body)
+        return self.algorithm_process
         
-    def stop_algorithm(self):
-        self.algorithm.join()
+    def request_scan(self, request):
+        self.req_queue.put(request)
         
-    def scan_request_action(self, request):
-        self.scan_req_act(request)
-        
+    def get_scan(self):
+        try:
+            scan = self.scan_queue.get_nowait()
+        except Empty:
+            scan = None
+        return scan

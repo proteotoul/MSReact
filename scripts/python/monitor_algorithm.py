@@ -1,4 +1,5 @@
 from algorithm import Algorithm
+import time
 
 class MonitorAlgorithm(Algorithm):
     """
@@ -36,19 +37,19 @@ class MonitorAlgorithm(Algorithm):
     """
 
     """Method - TODO: Create default method based on real method."""
-    ACQUISITION_METHOD = {}   
+    DEFAULT_ACQUISITION_METHODS = {}   
     """Sequence - TODO: Create default method based on real method."""
-    ACQUISITION_SEQUENCE = {}
+    DEFAULT_ACQUISITION_SEQUENCE = {}
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
     ALGORITHM_NAME = 'monitor'
     
     def __init__(self):
-        self.acquisition_method = DEFAULT_ACQUISITION_METHOD
-        self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
+        self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
         
-    def set_scan_request_action(self, scan_req_act):
+    def configure_algorithm(self, fetch_received_scan, request_scan):
         """
         Parameters
         ----------
@@ -56,7 +57,8 @@ class MonitorAlgorithm(Algorithm):
             A function that the algorithm can call when it would like to 
             request a custom scan
         """
-        self.scan_request_action = scan_req_act
+        self.fetch_received_scan = fetch_received_scan
+        self.request_scan = request_scan
         
     def validate_methods_and_sequence(self, methods, sequence):
         """
@@ -73,7 +75,7 @@ class MonitorAlgorithm(Algorithm):
               sequence was successful and False if it failed
         """
         success = True
-        self.acquisition_method = method
+        self.acquisition_methods = methods
         self.acquisition_sequence = sequence
         return success
         
@@ -96,15 +98,10 @@ class MonitorAlgorithm(Algorithm):
         self.requested_scan_format = req_scan_format
         return success
         
-    def consume_scan(self, scan):
-        """
-        Parameters
-        ----------
-        scan : dict
-            Scan received from the Mass Spectrometer Instrument
-        """
-        pass
-        
     def algorithm_body(self):
         while True:
-            pass
+            scan = self.fetch_received_scan()
+            if scan is not None:
+                #print(scan)
+                time.sleep(0.001)
+                
