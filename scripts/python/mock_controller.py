@@ -1,48 +1,42 @@
-import asyncio
+import time
 import os
+import subprocess
 from subprocess import Popen, CREATE_NEW_CONSOLE
 
 class MockController:
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
     DEFAULT_RAW_FILE_LIST = ["D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
     DEFAULT_SCAN_INTERVAL = 1
-    MOCK_CMD_BEGIN = \
-        'start /wait cmd /c D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe '
-    MOCK_NON_BLOCK_CMD_BEGIN = \
-        ['cmd', '/c', 'D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ']
+    MOCK_SERVER_PATH = \
+        ['D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ']
 
     def __init__(self, 
-                 uri=DEFAULT_URI, 
+                 uri=DEFAULT_URI,
                  raw_file_list = DEFAULT_RAW_FILE_LIST, 
                  scan_interval = DEFAULT_SCAN_INTERVAL):
         self.uri = uri
         self.raw_file_list = raw_file_list
-        self.scan_interval = scan_interval 
+        self.scan_interval = scan_interval
         
-    def run_mock(self):
-        cmd = self.MOCK_CMD_BEGIN + ' '.join(raw_file_list) + str(scan_interval)
-        os.system(cmd)
+    def create_mock_server(self):
+        cmd = self.MOCK_SERVER_PATH + \
+              self.raw_file_list + \
+              [str(self.scan_interval)]
+        self.mock_proc = Popen(cmd, creationflags=CREATE_NEW_CONSOLE)
         
-    def run_mock_nonblock(self):
-        cmd = self.MOCK_NON_BLOCK_CMD_BEGIN + self.raw_file_list + [str(self.scan_interval)]
-        return Popen(cmd, creationflags=CREATE_NEW_CONSOLE)
-        
-    async def run_mock_async(self):
-    # TODO - This is not working yet
-        cmd = self.MOCK_CMD_BEGIN + ' '.join(raw_file_list) + str(scan_interval)
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE)          
-        
-        stdout, stderr = await proc.communicate()
-
-        print(f'[ThermoMock exited with {proc.returncode}]')
-        if stdout:
-            print(f'[stdout]\n{stdout.decode()}')
-        if stderr:
-            print(f'[stderr]\n{stderr.decode()}')
+    def terminate_mock_server(self):
+        ret_code = self.mock_proc.poll()
+        if (ret_code != None):
+            print(f'Mock server terminated with return code: {ret_code}')
+        else:
+            self.mock_proc.terminate()
+            ret_code = self.mock_proc.poll()
+            if (ret_code == None):
+                print(f'Mock server did not terminate properly. \
+                       Please close the Mock server window.')
 
 if __name__ == "__main__":
     mock_controller = MockController()
-    mock_controller.run_mock_nonblock()
+    mock_controller.create_mock_server()
+    time.sleep(5)
+    mock_controller.terminate_mock_server()

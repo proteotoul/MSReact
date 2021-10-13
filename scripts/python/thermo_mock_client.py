@@ -134,3 +134,4 @@ if __name__ == "__main__":
             loop.run_until_complete(asyncio.gather(
                                         client.mock_instrument_start(), 
                                         algo_proc))
+            mock_controller.terminate_mock_server()
