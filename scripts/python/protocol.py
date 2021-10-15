@@ -45,11 +45,8 @@ class Protocol(ProtocolLayer):
     
     def __init__(self, transport_layer):
         self._tl = transport_layer
-        #if (self._tl.state == self._tl.TL_STATE_DISCONNECTED):
-        #    self._tl.connect(self._tl.uri)
         
     async def send_command(self, cmd, payload = None):
-        
         if (cmd in self.Commands):
             if (None == payload):
                 await self._tl.send(cmd.to_bytes(1, 'big'))

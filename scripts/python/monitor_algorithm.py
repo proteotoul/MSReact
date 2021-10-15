@@ -102,6 +102,12 @@ class MonitorAlgorithm(Algorithm):
         while True:
             scan = self.fetch_received_scan()
             if scan is not None:
-                #print(scan)
-                time.sleep(0.001)
+                mass = 0
+                for centroid in scan['Centroids']:
+                    if mass < centroid['Mz']:
+                        mass = centroid['Mz']
+                self.request_scan({"Precursor_mz" : str(mass)})
+                #c_count = scan['CentroidCount']
+                #print(f'Centroid count: {c_count}')
+                #time.sleep(0.001)
                 

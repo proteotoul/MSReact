@@ -24,7 +24,6 @@ class ThermoMockClient:
         self.algorithm = None
         self.scan_queue = multiprocessing.Manager().Queue()
         self.req_queue = multiprocessing.Manager().Queue()
-        pass
         
     def parse_client_arguments(self):
         # Top level parser
@@ -38,7 +37,7 @@ class ThermoMockClient:
                             help=f'algorithm to use during the acquisition, \
                             choices: {", ".join(algorithm_choices)}')
         
-        subparsers = parser.add_subparsers(help='available sub-commands:', 
+        subparsers = parser.add_subparsers(help='available sub-commands:',
                                            dest='command')
         
         # Parser for sub-command "normal"
@@ -70,8 +69,6 @@ class ThermoMockClient:
     async def config_instrument(self, args):
         success = False
         
-        self.ws_transport = WebSocketTransport(self.DEFAULT_MOCK_URI)
-        self.protocol = Protocol(self.ws_transport)
         self.inst_cont = InstrumentController(self.ws_transport,
                                               self.protocol,
                                               self.scan_queue,
@@ -79,9 +76,9 @@ class ThermoMockClient:
         await self.inst_cont.connect_to_instrument(self.DEFAULT_MOCK_URI)
         # TODO - Remove this if it's not necessary
         await asyncio.sleep(1)
-        possible_parameters = await self.inst_cont.get_possible_params_async()
+        possible_parameters = await self.inst_cont.get_possible_params()
         
-        await self.inst_cont.subscribe_to_scans_async()
+        await self.inst_cont.subscribe_to_scans()
         
         algorithm_type = self.algo_list.find_by_name(args.alg)
         if algorithm_type is not None:
@@ -99,15 +96,33 @@ class ThermoMockClient:
                                                                        possible_parameters)
         return success
         
+    def create_mock_server(self, raw_file_list, scan_interval):
+        self.ws_transport = WebSocketTransport(self.DEFAULT_MOCK_URI)
+        self.protocol = Protocol(self.ws_transport)
+        self.mock_controller = MockController(self.protocol, 
+                                              raw_file_list = raw_file_list,
+                                              scan_interval = scan_interval)
+        self.mock_controller.create_mock_server()
         
-    async def mock_instrument_start(self):
-        await self.inst_cont.mock_start_scan_tx_async()
+    async def start_mock_instrument(self):
+        await self.mock_controller.start_scan_tx()
         await self.inst_cont.start_listening_for_scans()
         
     def run_async_as_sync(self, coroutine, args):
         loop = asyncio.get_event_loop()
         result = loop.run_until_complete(coroutine(*args))
-        return result   
+        return result
+        
+    def custom_exception_handler(loop, context):
+        # first, handle with default handler
+        loop.default_exception_handler(context)
+
+        exception = context.get('exception')
+        #if isinstance(exception, ZeroDivisionError):
+        #    print(context)
+        #    loop.stop()
+        print(context)
+        loop.stop()
         
 if __name__ == "__main__":
     client = ThermoMockClient()
@@ -119,19 +134,21 @@ if __name__ == "__main__":
     elif ('mock' == args.command):
         print(f'Selected raw files: {args.raw_files}')
         print(f'Selected scan interval: {args.scan_interval}')
+        print(type(args.raw_files))
+        client.create_mock_server(args.raw_files, args.scan_interval)
+        try:
+            result = client.run_async_as_sync(client.config_instrument, (args,))
         
-        mock_controller = MockController(raw_file_list = args.raw_files,
-                                         scan_interval = args.scan_interval)                                 
-        mock_controller.run_mock_nonblock()
-    
-        result = client.run_async_as_sync(client.config_instrument, (args,))
-    
-        if result:
-            loop = asyncio.get_event_loop()
-            executor = ProcessPoolExecutor()
-            algo_proc = \
-                loop.run_in_executor(executor, client.algorithm.algorithm_body)
-            loop.run_until_complete(asyncio.gather(
-                                        client.mock_instrument_start(), 
-                                        algo_proc))
-            mock_controller.terminate_mock_server()
+            if result:
+                loop = asyncio.get_event_loop()
+                loop.set_exception_handler(client.custom_exception_handler)
+                executor = ProcessPoolExecutor()
+                algo_proc = \
+                    loop.run_in_executor(executor, client.algorithm.algorithm_body)
+                loop.run_until_complete(asyncio.gather(
+                                            client.start_mock_instrument(),
+                                            client.inst_cont.start_listening_for_requests(), 
+                                            algo_proc))
+        except:
+            client.mock_controller.terminate_mock_server()
+            loop.stop()
