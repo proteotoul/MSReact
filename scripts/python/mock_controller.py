@@ -2,8 +2,9 @@ import time
 import os
 import subprocess
 from subprocess import Popen, CREATE_NEW_CONSOLE
+from instrument_controller import InstrumentController
 
-class MockController:
+class MockController(InstrumentController):
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
     DEFAULT_RAW_FILE_LIST = ["D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
     DEFAULT_SCAN_INTERVAL = 1
@@ -11,16 +12,18 @@ class MockController:
 
     def __init__(self, 
                  protocol,
+                 algo_sync,
+                 acq_cont,
                  uri=DEFAULT_URI,
                  raw_file_list = DEFAULT_RAW_FILE_LIST, 
                  scan_interval = DEFAULT_SCAN_INTERVAL):
         self.uri = uri
         self.raw_file_list = raw_file_list
         self.scan_interval = scan_interval
-        self.proto = protocol
+        super().__init__(protocol, algo_sync, acq_cont)
+        # Continue updating MockController so it is implementing a full instrument controller too
         
     def create_mock_server(self):
-        print(type(self.raw_file_list))
         cmd = self.MOCK_SERVER_PATH + \
               [", ".join(self.raw_file_list)] + \
               [str(self.scan_interval)]

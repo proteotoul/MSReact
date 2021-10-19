@@ -49,7 +49,9 @@ class MonitorAlgorithm(Algorithm):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
         self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
         
-    def configure_algorithm(self, fetch_received_scan, request_scan):
+    def configure_algorithm(self, 
+                            fetch_received_scan, 
+                            request_scan):
         """
         Parameters
         ----------
@@ -99,15 +101,26 @@ class MonitorAlgorithm(Algorithm):
         return success
         
     def algorithm_body(self):
+        num_of_acquisitions = 2
         while True:
-            scan = self.fetch_received_scan()
-            if scan is not None:
-                mass = 0
-                for centroid in scan['Centroids']:
-                    if mass < centroid['Mz']:
-                        mass = centroid['Mz']
-                self.request_scan({"Precursor_mz" : str(mass)})
-                #c_count = scan['CentroidCount']
-                #print(f'Centroid count: {c_count}')
-                #time.sleep(0.001)
+            status, scan = self.fetch_received_scan()
+            if (self.AcquisitionStatus.acquisition_finished == status):
+                num_of_acquisitions = num_of_acquisitions - 1
+                print(f'Acquisition {num_of_acquisitions} finished...')
+                if (0 == num_of_acquisitions):
+                    break
+            elif (self.AcquisitionStatus.scan_available == status):
+                    mass = 0
+                    for centroid in scan['Centroids']:
+                        if mass < centroid['Mz']:
+                            mass = centroid['Mz']
+                    self.request_scan({"Precursor_mz" : str(mass)})
+                    #c_count = scan['CentroidCount']
+                    #print(f'Centroid count: {c_count}')
+                    #time.sleep(0.001)
+            else:
+                # No scan was available
+                pass
+                    
+        print(f'Exited algorithm loop')            
                 

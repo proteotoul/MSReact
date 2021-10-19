@@ -44,21 +44,21 @@ class Protocol(ProtocolLayer):
         UNSUBSCRIBE_FROM_SCANS  = 12
     
     def __init__(self, transport_layer):
-        self._tl = transport_layer
+        self.tl = transport_layer
         
     async def send_command(self, cmd, payload = None):
         if (cmd in self.Commands):
             if (None == payload):
-                await self._tl.send(cmd.to_bytes(1, 'big'))
+                await self.tl.send(cmd.to_bytes(1, 'big'))
             else:
                 msg = cmd.to_bytes(1, 'big') + msgpack.packb(payload)
-                await self._tl.send(msg)
+                await self.tl.send(msg)
         else:
             #TODO - Exception
             pass
     
     async def receive_command(self):
-        msg = await self._tl.receive()
+        msg = await self.tl.receive()
         # Parse commands
         cmd = self.Commands(msg[0])
         payload = None

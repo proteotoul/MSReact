@@ -1,8 +1,16 @@
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
-import enum
 import multiprocessing
 from queue import Empty, Full
+
+class AlgorithmSync:
+    
+    def __init__ (self):
+        self.rec_scan_queue = multiprocessing.Manager().Queue()
+        self.scan_req_queue = multiprocessing.Manager().Queue()
+        self.acq_end = multiprocessing.Manager().Event()
+        self.running = multiprocessing.Manager().Event()
+        self.error = multiprocessing.Manager().Event()
 
 class AlgorithmRunner:
     """
@@ -32,12 +40,7 @@ class AlgorithmRunner:
     """Default cycle interval - TODO: This is only for mock."""
     DEFAULT_CYCLE_INTERVAL = 10
     
-    class ConfigErrors(enum.Enum):
-        no_error        = 0
-        method_error    = 1
-        sequence_error  = 2
-    
-    def __init__(self, algorithm, method, sequence, scan_queue, req_queue):
+    def __init__(self, algorithm, method, sequence, algo_sync):
         """
         Parameters
         ----------
@@ -53,11 +56,11 @@ class AlgorithmRunner:
         self.algorithm = algorithm
         self.method = method
         self.sequence = sequence
-        self.scan_queue = scan_queue
-        self.req_queue = req_queue
+        self.algo_sync = algo_sync
         
     def configure_and_validate_algorithm(self, methods, sequence, rx_scan_format, req_scan_format):
-        self.algorithm.configure_algorithm(self.get_scan, self.request_scan)
+        self.algorithm.configure_algorithm(self.get_scan, 
+                                           self.request_scan)
         success = \
             self.algorithm.validate_scan_formats(rx_scan_format, req_scan_format)
         success = \
@@ -72,11 +75,20 @@ class AlgorithmRunner:
         return self.algorithm_process
         
     def request_scan(self, request):
-        self.req_queue.put(request)
+        self.algo_sync.scan_req_queue.put(request)
         
     def get_scan(self):
         try:
-            scan = self.scan_queue.get_nowait()
+            if self.algo_sync.acq_end.is_set():
+                self.algo_sync.acq_end.clear()
+                scan = (self.algorithm.AcquisitionStatus.acquisition_finished,
+                        None)
+            else:
+                scan = (self.algorithm.AcquisitionStatus.scan_available, 
+                        self.algo_sync.rec_scan_queue.get_nowait())
         except Empty:
-            scan = None
+            scan = (self.algorithm.AcquisitionStatus.scan_not_available, None)
         return scan
+        
+    #def algorithm_finished(self):
+    #    self.algo_sync.running.clear()

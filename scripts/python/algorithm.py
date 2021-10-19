@@ -1,3 +1,5 @@
+import enum
+
 class Algorithm:
     """
     An abstract class for algorithms
@@ -42,11 +44,18 @@ class Algorithm:
     """Name of the algorithm. This is a mandatory field for the algorithms"""
     ALGORITHM_NAME = 'abstract_algorithm'
     
+    class AcquisitionStatus(enum.Enum):
+        scan_available          = 0
+        scan_not_available      = 1
+        acquisition_finished    = 2
+    
     def __init__(self):
         self.acquisition_method = DEFAULT_ACQUISITION_METHOD
         self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
         
-    def configure_algorithm(self, fetch_received_scan, request_scan):
+    def configure_algorithm(self, 
+                            fetch_received_scan, 
+                            request_scan):
         """
         Parameters
         ----------
@@ -56,6 +65,7 @@ class Algorithm:
         """
         self.fetch_received_scan = fetch_received_scan
         self.request_scan = request_scan
+        self.finish_algo = finish_algo
         
     def validate_methods_and_sequence(self, methods, sequence):
         """

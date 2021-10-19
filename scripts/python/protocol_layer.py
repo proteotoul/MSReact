@@ -31,7 +31,7 @@ class ProtocolLayer:
         GET_VERSION             = 1
     
     def __init__(self, transport_layer):
-        self._tl = transport_layer
+        self.tl = transport_layer
         
     async def send_command(self, cmd, payload = None):
         pass
