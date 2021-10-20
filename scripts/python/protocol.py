@@ -42,6 +42,7 @@ class Protocol(ProtocolLayer):
         POSSIBLE_PARAMS         = 10
         SUBSCRIBE_TO_SCANS      = 11
         UNSUBSCRIBE_FROM_SCANS  = 12
+        SET_MS_SCAN_TX_LEVEL    = 13
     
     def __init__(self, transport_layer):
         self.tl = transport_layer

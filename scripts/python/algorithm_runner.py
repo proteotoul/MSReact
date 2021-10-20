@@ -89,6 +89,4 @@ class AlgorithmRunner:
         except Empty:
             scan = (self.algorithm.AcquisitionStatus.scan_not_available, None)
         return scan
-        
-    #def algorithm_finished(self):
-    #    self.algo_sync.running.clear()
+    

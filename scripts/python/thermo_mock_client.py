@@ -104,10 +104,11 @@ class ThermoMockClient:
                                                     None,
                                                     self.algo_sync)
             success = \
-                self.algorithm_runner.configure_and_validate_algorithm(None, 
+                self.algorithm_runner.configure_and_validate_algorithm(args.raw_files,
                                                                        None,
                                                                        None,
                                                                        possible_parameters)
+            await inst_cont.set_ms_scan_tx_level(self.algorithm.TRANSMITTED_SCAN_LEVEL)
         return success
         
     async def start_mock_instrument(self, mock_cont):

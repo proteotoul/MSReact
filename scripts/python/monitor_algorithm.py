@@ -44,6 +44,14 @@ class MonitorAlgorithm(Algorithm):
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
     ALGORITHM_NAME = 'monitor'
+    '''Level of MS scans that are transferred from the mock server.
+       eg. - 1 means only MS scans are transferred from the mock server. 
+           - 2 means MS and MS2 scans are transferred from the mock server
+       Note - In case of custom scan requests the requested scan will be 
+              transferred from the mock server not regarding the scan level,
+              if it's available in the raw file.
+       Note2 - This could be different in each acquisition.'''
+    TRANSMITTED_SCAN_LEVEL = 1
     
     def __init__(self):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
@@ -101,7 +109,8 @@ class MonitorAlgorithm(Algorithm):
         return success
         
     def algorithm_body(self):
-        num_of_acquisitions = 2
+        # This is temporary until the handling of sequence and methods are figured out
+        num_of_acquisitions = len(self.acquisition_methods)
         while True:
             status, scan = self.fetch_received_scan()
             if (self.AcquisitionStatus.acquisition_finished == status):

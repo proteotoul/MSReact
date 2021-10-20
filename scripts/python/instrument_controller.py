@@ -55,6 +55,10 @@ class InstrumentController:
         print('Unsubscribing from scans.')
         await self.proto.send_command(self.proto.Commands.UNSUBSCRIBE_FROM_SCANS)
         
+    async def set_ms_scan_tx_level(self, level):
+        print(f'Setting ms scan transfer level to {level}')
+        await self.proto.send_command(self.proto.Commands.SET_MS_SCAN_TX_LEVEL)
+        
     async def listen_for_scans(self):
         print('Start listening for scans')
         async with self.acq_lock:
