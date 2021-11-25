@@ -123,7 +123,7 @@ class MonitorAlgorithm(Algorithm):
                     for centroid in scan['Centroids']:
                         if mass < centroid['Mz']:
                             mass = centroid['Mz']
-                    self.request_scan({"Precursor_mz" : str(mass)})
+                    #self.request_scan({"Precursor_mz" : str(mass)})
                     #c_count = scan['CentroidCount']
                     #print(f'Centroid count: {c_count}')
                     #time.sleep(0.001)

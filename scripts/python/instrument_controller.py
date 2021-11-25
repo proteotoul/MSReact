@@ -24,9 +24,9 @@ class InstrumentController:
         
     async def get_protocol_version(self):
         print('Getting protocol version')
-        await self.proto.send_command(self.proto.Commands.GET_VERSION)
-        cmd, payload = await self.proto.receive_command()
-        if (self.proto.Commands.VERSION == cmd):
+        await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.SERVER_PROTO_VER == msg):
             print(f'Received version: {payload}')
         else:
             pass
@@ -35,29 +35,29 @@ class InstrumentController:
         
     async def get_possible_params(self):
         print('Getting possible parameters for requesting scans...')
-        await self.proto.send_command(self.proto.Commands.GET_POSSIBLE_PARAMS)
-        cmd, payload = await self.proto.receive_command()
-        if (self.proto.Commands.POSSIBLE_PARAMS != cmd):
+        await self.proto.send_message(self.proto.MessageIDs.GET_POSSIBLE_PARAMS)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.POSSIBLE_PARAMS != msg):
             # TODO - raise exception
-            print("Response was not POSSIBLE_PARAMS command.")
+            print("Response was not POSSIBLE_PARAMS message.")
         return payload
         
     async def request_scan(self, parameters):
         print(f'Requesting scans with the following parameters:\n{parameters}')
-        await self.proto.send_command(self.proto.Commands.CUSTOM_SCAN, 
+        await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN,
                                       parameters)
         
     async def subscribe_to_scans(self):
         print('Subscribing for scans.')
-        await self.proto.send_command(self.proto.Commands.SUBSCRIBE_TO_SCANS)
+        await self.proto.send_message(self.proto.MessageIDs.SUBSCRIBE_TO_SCANS)
     
     async def unsubscribe_from_scans(self):
         print('Unsubscribing from scans.')
-        await self.proto.send_command(self.proto.Commands.UNSUBSCRIBE_FROM_SCANS)
+        await self.proto.send_message(self.proto.MessageIDs.UNSUBSCRIBE_FROM_SCANS)
         
     async def set_ms_scan_tx_level(self, level):
         print(f'Setting ms scan transfer level to {level}')
-        await self.proto.send_command(self.proto.Commands.SET_MS_SCAN_TX_LEVEL)
+        await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL)
         
     async def listen_for_scans(self):
         print('Start listening for scans')
@@ -67,13 +67,13 @@ class InstrumentController:
         while num_acq_left > 0:
             try:
                 # The problem is that the await will hang here
-                cmd, payload = \
-                    await asyncio.wait_for(self.proto.receive_command(), 
+                msg, payload = \
+                    await asyncio.wait_for(self.proto.receive_message(), 
                                            timeout=0.001)
-                if (self.proto.Commands.FINISHED_SCAN_TX == cmd):
+                if (self.proto.MessageIDs.FINISHED_ACQ == msg):
                     self.algo_sync.acq_end.set()
                     num_acq_left -= 1
-                elif (self.proto.Commands.SCAN_TX == cmd):
+                elif (self.proto.MessageIDs.SCAN_TX == msg):
                     self.algo_sync.rec_scan_queue.put(payload)
                 else:
                     # TODO - raise exception

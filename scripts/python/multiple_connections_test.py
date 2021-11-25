@@ -14,7 +14,7 @@ async def main():
         protocol = Protocol(ws_transport)
 
         # Subscribe for scans
-        await protocol.send_command(protocol.Commands.SUBSCRIBE_TO_SCANS)
+        await protocol.send_command(protocol.MessageIDs.SUBSCRIBE_TO_SCANS)
         
         # Send start command
         rx_in_progress = True
@@ -22,13 +22,13 @@ async def main():
         i = 0
         while rx_in_progress:
             try:
-                cmd, payload = await protocol.receive_command()
-                print(f'Command: {cmd.name}\n')
+                msg, payload = await protocol.receive_command()
+                print(f'Command: {msg.name}\n')
                 if (i <  5):
                     i += 1
                 elif keep_being_notified:
                     keep_being_notified = False
-                    await protocol.send_command(protocol.Commands.UNSUBSCRIBE_FROM_SCANS)
+                    await protocol.send_command(protocol.MessageIDs.UNSUBSCRIBE_FROM_SCANS)
                 else:
                     pass
             except ws.exceptions.ConnectionClosed:

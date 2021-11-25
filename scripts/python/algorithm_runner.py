@@ -80,6 +80,7 @@ class AlgorithmRunner:
     def get_scan(self):
         try:
             if self.algo_sync.acq_end.is_set():
+                # Problem: There might be still scans in the queue
                 self.algo_sync.acq_end.clear()
                 scan = (self.algorithm.AcquisitionStatus.acquisition_finished,
                         None)

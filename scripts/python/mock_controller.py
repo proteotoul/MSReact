@@ -24,10 +24,10 @@ class MockController(InstrumentController):
         # Continue updating MockController so it is implementing a full instrument controller too
         
     def create_mock_server(self):
-        cmd = self.MOCK_SERVER_PATH + \
+        msg = self.MOCK_SERVER_PATH + ['mock'] + \
               [", ".join(self.raw_file_list)] + \
               [str(self.scan_interval)]
-        self.mock_proc = Popen(cmd, creationflags=CREATE_NEW_CONSOLE)
+        self.mock_proc = Popen(msg, creationflags=CREATE_NEW_CONSOLE)
         
     def terminate_mock_server(self):
         ret_code = self.mock_proc.poll()
@@ -42,15 +42,15 @@ class MockController(InstrumentController):
                        
     async def start_scan_tx(self):
         print('Start transferring scans from the raw file by the mock')
-        await self.proto.send_command(self.proto.Commands.START_SCAN_TX)
+        await self.proto.send_message(self.proto.MessageIDs.START_ACQ)
     
     async def stop_scan_tx(self):
         print('Stop transferring scans from the raw file by the mock')
-        await self.proto.send_command(self.proto.Commands.STOP_SCAN_TX)
+        await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ)
         
     async def request_shut_down_server(self):
         print('Shutting down mock server')
-        await self.proto.send_command(self.proto.Commands.SHUT_DOWN_SERVER)
+        await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER)
 
 if __name__ == "__main__":
     mock_controller = MockController()

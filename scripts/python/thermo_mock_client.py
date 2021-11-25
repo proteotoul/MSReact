@@ -81,7 +81,7 @@ class ThermoMockClient:
                                          scan_interval = scan_interval)
         mock_controller.create_mock_server()
         
-        return mock_controller    
+        return mock_controller
         
     async def config_instrument(self, inst_cont, args):
         success = False
