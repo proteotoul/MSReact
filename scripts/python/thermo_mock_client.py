@@ -88,6 +88,8 @@ class ThermoMockClient:
         
         #inst_cont = InstrumentController(self.protocol,
         #                                      self.algo_sync)
+        #TODO - This is fine for now but in the future the client will connect
+        #       to some other URI probably.
         await inst_cont.connect_to_instrument(self.DEFAULT_MOCK_URI)
         # TODO - Remove this if it's not necessary
         await asyncio.sleep(1)
@@ -108,11 +110,10 @@ class ThermoMockClient:
                                                                        None,
                                                                        None,
                                                                        possible_parameters)
-            await inst_cont.set_ms_scan_tx_level(self.algorithm.TRANSMITTED_SCAN_LEVEL)
         return success
         
     async def start_mock_instrument(self, mock_cont):
-        await mock_cont.start_scan_tx()
+        await mock_cont.set_ms_scan_tx_level(self.algorithm.TRANSMITTED_SCAN_LEVEL)
         await mock_cont.listen_for_scans()
         
     def run_async_as_sync(self, coroutine, args):

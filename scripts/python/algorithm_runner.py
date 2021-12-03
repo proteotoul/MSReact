@@ -9,7 +9,7 @@ class AlgorithmSync:
         self.rec_scan_queue = multiprocessing.Manager().Queue()
         self.scan_req_queue = multiprocessing.Manager().Queue()
         self.acq_end = multiprocessing.Manager().Event()
-        self.running = multiprocessing.Manager().Event()
+        self.move_to_next_acq = multiprocessing.Manager().Event()
         self.error = multiprocessing.Manager().Event()
 
 class AlgorithmRunner:
@@ -58,9 +58,15 @@ class AlgorithmRunner:
         self.sequence = sequence
         self.algo_sync = algo_sync
         
-    def configure_and_validate_algorithm(self, methods, sequence, rx_scan_format, req_scan_format):
+        #TODO - This should be reviewed
+        self.acquisition_finishing = False
+        
+    def configure_and_validate_algorithm(self, methods, 
+                                         sequence, rx_scan_format, 
+                                         req_scan_format):
         self.algorithm.configure_algorithm(self.get_scan, 
-                                           self.request_scan)
+                                           self.request_scan,
+                                           self.start_acquisition)
         success = \
             self.algorithm.validate_scan_formats(rx_scan_format, req_scan_format)
         success = \
@@ -80,14 +86,22 @@ class AlgorithmRunner:
     def get_scan(self):
         try:
             if self.algo_sync.acq_end.is_set():
-                # Problem: There might be still scans in the queue
+                # Set acquisition finishing to true, so next time the queue
+                # is found to be empty, an acquisition finished message is 
+                # sent to the algorithm.
+                self.acquisition_finishing = True
+            scan = (self.algorithm.AcquisitionStatus.scan_available, 
+                    self.algo_sync.rec_scan_queue.get_nowait())
+        except Empty:
+            if self.acquisition_finishing:
                 self.algo_sync.acq_end.clear()
                 scan = (self.algorithm.AcquisitionStatus.acquisition_finished,
                         None)
+                self.acquisition_finishing = False
             else:
-                scan = (self.algorithm.AcquisitionStatus.scan_available, 
-                        self.algo_sync.rec_scan_queue.get_nowait())
-        except Empty:
-            scan = (self.algorithm.AcquisitionStatus.scan_not_available, None)
+                scan = (self.algorithm.AcquisitionStatus.scan_not_available, None)
         return scan
+        
+    def start_acquisition(self):
+        self.algo_sync.move_to_next_acq.set()
     

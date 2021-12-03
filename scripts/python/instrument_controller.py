@@ -55,24 +55,31 @@ class InstrumentController:
         print('Unsubscribing from scans.')
         await self.proto.send_message(self.proto.MessageIDs.UNSUBSCRIBE_FROM_SCANS)
         
-    async def set_ms_scan_tx_level(self, level):
-        print(f'Setting ms scan transfer level to {level}')
-        await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL)
+    async def start_acquisition(self):
+        print('Start transferring scans from the raw file by the mock')
+        await self.proto.send_message(self.proto.MessageIDs.START_ACQ)
+    
+    async def stop_acquisition(self):
+        print('Stop transferring scans from the raw file by the mock')
+        await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ)
         
     async def listen_for_scans(self):
-        print('Start listening for scans')
         async with self.acq_lock:
             self.acq_running = True
         num_acq_left = self.acq_cont.num_acq
+        await self.start_next_acquisition(num_acq_left)
+        
         while num_acq_left > 0:
             try:
                 # The problem is that the await will hang here
                 msg, payload = \
-                    await asyncio.wait_for(self.proto.receive_message(), 
+                    await asyncio.wait_for(self.proto.receive_message(),
                                            timeout=0.001)
                 if (self.proto.MessageIDs.FINISHED_ACQ == msg):
+                    print('Received finished acquisition message.')
                     self.algo_sync.acq_end.set()
                     num_acq_left -= 1
+                    await self.start_next_acquisition(num_acq_left)
                 elif (self.proto.MessageIDs.SCAN_TX == msg):
                     self.algo_sync.rec_scan_queue.put(payload)
                 else:
@@ -113,4 +120,15 @@ class InstrumentController:
         result = loop.run_until_complete(coroutine())
         return result
         
-    
+    async def wait_for_acquisition_start(self):
+        print('Waiting for acquisition to start...')
+        is_set = False
+        while (not is_set):
+            is_set = self.algo_sync.move_to_next_acq.is_set()
+            await asyncio.sleep(0.05)
+        self.algo_sync.move_to_next_acq.clear()
+        
+    async def start_next_acquisition(self, num_acq_left):
+        if 0 != num_acq_left:
+            await self.wait_for_acquisition_start()
+            await self.start_acquisition()

@@ -1,8 +1,9 @@
 from algorithm import Algorithm
 from monitor_algorithm import MonitorAlgorithm
+from dsso_algorithm import DSSOAlgorithm
 
 class AlgorithmList:
-    ALGO_LIST = [MonitorAlgorithm]
+    ALGO_LIST = [MonitorAlgorithm, DSSOAlgorithm]
     
     def __init__(self):
         pass

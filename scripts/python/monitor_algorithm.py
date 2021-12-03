@@ -59,7 +59,8 @@ class MonitorAlgorithm(Algorithm):
         
     def configure_algorithm(self, 
                             fetch_received_scan, 
-                            request_scan):
+                            request_scan,
+                            start_acquisition):
         """
         Parameters
         ----------
@@ -69,6 +70,7 @@ class MonitorAlgorithm(Algorithm):
         """
         self.fetch_received_scan = fetch_received_scan
         self.request_scan = request_scan
+        self.start_acquisition = start_acquisition
         
     def validate_methods_and_sequence(self, methods, sequence):
         """

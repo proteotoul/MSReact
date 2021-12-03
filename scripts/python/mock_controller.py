@@ -39,15 +39,11 @@ class MockController(InstrumentController):
             if (ret_code == None):
                 print(f'Mock server did not terminate properly. \
                        Please close the Mock server window.')
-                       
-    async def start_scan_tx(self):
-        print('Start transferring scans from the raw file by the mock')
-        await self.proto.send_message(self.proto.MessageIDs.START_ACQ)
     
-    async def stop_scan_tx(self):
-        print('Stop transferring scans from the raw file by the mock')
-        await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ)
-        
+    async def set_ms_scan_tx_level(self, level):
+        print(f'Setting ms scan transfer level to {level}')
+        await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL, level)
+    
     async def request_shut_down_server(self):
         print('Shutting down mock server')
         await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER)
