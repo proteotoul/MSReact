@@ -43,7 +43,7 @@ class InstrumentController:
         return payload
         
     async def request_scan(self, parameters):
-        print(f'Requesting scans with the following parameters:\n{parameters}')
+        #print(f'Requesting scans with the following parameters:\n{parameters}')
         await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN,
                                       parameters)
         

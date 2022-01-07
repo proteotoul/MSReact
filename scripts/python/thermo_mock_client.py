@@ -28,6 +28,9 @@ class ThermoMockClient:
         self.req_queue = multiprocessing.Manager().Queue()
         self.algo_sync = AlgorithmSync()
         
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        
     def parse_client_arguments(self):
         # Top level parser
         parser = argparse.ArgumentParser(description='ThermoMock python client')
@@ -79,7 +82,7 @@ class ThermoMockClient:
                                          self.acq_man,
                                          raw_file_list = raw_file_list,
                                          scan_interval = scan_interval)
-        mock_controller.create_mock_server()
+        #mock_controller.create_mock_server()
         
         return mock_controller
         
@@ -117,7 +120,9 @@ class ThermoMockClient:
         await mock_cont.listen_for_scans()
         
     def run_async_as_sync(self, coroutine, args):
-        loop = asyncio.get_event_loop()
+        #loop = asyncio.get_event_loop()
+        #loop = asyncio.get_running_loop()
+        loop = self.loop
         if args is not None:
             result = loop.run_until_complete(coroutine(*args))
         else:
@@ -152,9 +157,11 @@ if __name__ == "__main__":
                                               (mock_cont, args))
         
             if result:
-                loop = asyncio.get_event_loop()
+                #loop = asyncio.get_event_loop()
+                #loop = asyncio.get_running_loop()
+                loop = client.loop
                 loop.set_exception_handler(client.custom_exception_handler)
-                executor = ProcessPoolExecutor()
+                executor = ProcessPoolExecutor(max_workers=1)
                 algo_proc = \
                     loop.run_in_executor(executor, client.algorithm.algorithm_body)
                 loop.run_until_complete(asyncio.gather(
@@ -166,5 +173,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(e)
             mock_cont.terminate_mock_server()
-            loop = asyncio.get_event_loop()
+            #loop = asyncio.get_event_loop()
+            #loop = asyncio.get_running_loop()
+            loop = client.loop
             loop.stop()

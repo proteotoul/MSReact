@@ -40,9 +40,15 @@ class MockController(InstrumentController):
                 print(f'Mock server did not terminate properly. \
                        Please close the Mock server window.')
     
-    async def set_ms_scan_tx_level(self, level):
-        print(f'Setting ms scan transfer level to {level}')
-        await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL, level)
+    async def set_ms_scan_tx_level(self, scan_level_range):
+        if scan_level_range[0] <= scan_level_range[1]:
+            if scan_level_range[0] != scan_level_range[1]:
+                print('Setting ms scan transfer level to between ' 
+                      f'MS{scan_level_range[0]} and MS{scan_level_range[1]}')
+            else:
+                print(f'Setting ms scan transfer level to MS{scan_level_range[0]}')
+            await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL,
+                                          scan_level_range)
     
     async def request_shut_down_server(self):
         print('Shutting down mock server')

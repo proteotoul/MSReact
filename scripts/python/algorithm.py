@@ -49,7 +49,7 @@ class Algorithm:
        Note - In case of custom scan requests the requested scan will be 
               transferred from the mock server not regarding the scan level,
               if it's available in the raw file.'''
-    TRANSMITTED_SCAN_LEVEL = 1
+    TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     class AcquisitionStatus(enum.Enum):
         scan_available          = 0

@@ -51,7 +51,7 @@ class MonitorAlgorithm(Algorithm):
               transferred from the mock server not regarding the scan level,
               if it's available in the raw file.
        Note2 - This could be different in each acquisition.'''
-    TRANSMITTED_SCAN_LEVEL = 1
+    TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     def __init__(self):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
