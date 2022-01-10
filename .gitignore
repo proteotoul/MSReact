@@ -389,4 +389,11 @@ FodyWeavers.xsd
 
 # Data files too large to be commited
 ThermoMock/ThermoMockTest/Data/Excluded/
+scripts/data/
+scripts/default_nn_model/
+scripts/python/data/
+scripts/python/python
+scripts/python/thermomock-env/
+scripts/python/ProteomicsDev
+
 
