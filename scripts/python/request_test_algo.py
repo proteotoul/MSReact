@@ -1,4 +1,5 @@
 from algorithm import Algorithm
+import logging
 import time
 
 class RequestTestAlgorithm(Algorithm):
@@ -56,6 +57,7 @@ class RequestTestAlgorithm(Algorithm):
     def __init__(self):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
         self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.logger = logging.getLogger(__name__)
         
     def configure_algorithm(self, 
                             fetch_received_scan, 
@@ -118,7 +120,7 @@ class RequestTestAlgorithm(Algorithm):
             status, scan = self.fetch_received_scan()
             if (self.AcquisitionStatus.acquisition_finished == status):
                 num_of_acquisitions = num_of_acquisitions - 1
-                print(f'Acquisition {num_of_acquisitions} finished...')
+                self.logger.info(f'Acquisition {num_of_acquisitions} finished...')
                 if (0 == num_of_acquisitions):
                     break
             elif (self.AcquisitionStatus.scan_available == status):
@@ -128,13 +130,13 @@ class RequestTestAlgorithm(Algorithm):
                             mass = centroid['Mz']
                     #self.request_scan({"Precursor_mz" : str(mass)})
                     #c_count = scan['CentroidCount']
-                    #print(f'Centroid count: {c_count}')
+                    #self.logger.info(f'Centroid count: {c_count}')
                     #time.sleep(0.001)
             else:
                 # No scan was available
                 pass
                     
-        print(f'Exited algorithm loop')      
+        self.logger.info(f'Exited algorithm loop')      
 '''
             
         self.start_acquisition()
@@ -150,5 +152,5 @@ class RequestTestAlgorithm(Algorithm):
             else:
                 # No scan was available
                 pass
-        print(f'Exited algorithm loop')
+        self.logger.info(f'Exited algorithm loop')
                 

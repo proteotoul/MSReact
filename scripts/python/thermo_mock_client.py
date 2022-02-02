@@ -1,5 +1,8 @@
 import argparse
 import asyncio
+import json
+import logging
+import logging.config
 import multiprocessing
 import signal
 import time
@@ -32,6 +35,16 @@ class ThermoMockClient:
         
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
+        
+        # Set up logging
+        #logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(module)s.' +
+        #                           '%(funcName)s\n\t%(message)s',
+        #                    level=logging.DEBUG)
+        with open("log_conf.json", "r", encoding="utf-8") as fd:
+            logging.config.dictConfig(json.load(fd))
+        self.logger = logging.getLogger(__name__)
+        
+        #time.sleep(10)
         
     def parse_client_arguments(self):
         # Top level parser
@@ -91,7 +104,7 @@ class ThermoMockClient:
     def set_up_instrument_controller(self, address):
         # Use address instead of default URI
         uri = f'ws://{address}:4649/SWSS'
-        print(uri)
+        self.logger.info(uri)
         self.ws_transport = WebSocketTransport(uri)
         self.protocol = Protocol(self.ws_transport)
         self.acq_man = AcquisitionManager()
@@ -99,7 +112,6 @@ class ThermoMockClient:
         instrument_controller = InstrumentController(self.protocol,
                                                      self.algo_sync,
                                                      self.acq_man)
-                                                     
         return instrument_controller
         
     async def config_instrument(self, inst_cont, args):
@@ -112,6 +124,10 @@ class ThermoMockClient:
         await inst_cont.connect_to_instrument(f'ws://{args.address}:4649/SWSS')
         # TODO - Remove this if it's not necessary
         await asyncio.sleep(1)
+        
+        #logging.getLogger("websockets").setLevel(logging.WARNING)
+        #logging.getLogger("websockets.protocol").setLevel(logging.WARNING)
+        #logging.getLogger("websockets.server").setLevel(logging.WARNING)
         
         # TODO - Instrument discovery shall take place later.
         await inst_cont.select_instrument(1)
@@ -169,32 +185,32 @@ class ThermoMockClient:
         #loop.default_exception_handler(context)
 
         message = context.get('exception', context["message"])
-        print(f'Caught exception: {message}')
+        self.logger.info(f'Caught exception: {message}')
         asyncio.create_task(self.shutdown(loop))
         #if isinstance(exception, ZeroDivisionError):
-        #    print(context)
+        #    self.logger.info(context)
         #    loop.stop()
-        #print(context)
+        #self.logger.info(context)
         #loop.stop()
         
     async def shutdown(loop, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
         if signal:
-            logging.info(f"Received exit signal {signal.name}...")
+            self.logger.info(f"Received exit signal {signal.name}...")
         tasks = [t for t in asyncio.all_tasks() if t is not
                  asyncio.current_task()]
 
         [task.cancel() for task in tasks]
 
-        print(f"Cancelling {len(tasks)} outstanding tasks")
+        self.logger.info(f"Cancelling {len(tasks)} outstanding tasks")
         await asyncio.gather(*tasks, return_exceptions=True)
         loop.stop()
         
 if __name__ == "__main__":
     client = ThermoMockClient()
     args = client.parse_client_arguments()
-    print(f'Selected algorithm: {args.alg}')
-    print(f'Selected sub-command: {args.command}')
+    client.logger.info(f'Selected algorithm: {args.alg}')
+    client.logger.info(f'Selected sub-command: {args.command}')
     if ('real' == args.command):
         inst_cont = \
             client.set_up_instrument_controller(args.address)
@@ -225,15 +241,15 @@ if __name__ == "__main__":
                 #client.run_async_as_sync(inst_cont.request_shut_down_server, None)
         except Exception as e:
             traceback.print_exc()
-            #print(e)
+            #client.logger.info(e)
             #inst_cont.terminate_mock_server()
             #loop = asyncio.get_event_loop()
             #loop = asyncio.get_running_loop()
             loop = client.loop
             loop.stop()
     elif ('mock' == args.command):
-        print(f'Selected raw files: {args.raw_files}')
-        print(f'Selected scan interval: {args.scan_interval}')
+        client.logger.info(f'Selected raw files: {args.raw_files}')
+        client.logger.info(f'Selected scan interval: {args.scan_interval}')
         mock_cont = \
             client.create_mock_server(args.raw_files, args.scan_interval)
         try:
@@ -255,7 +271,7 @@ if __name__ == "__main__":
                                             
                 client.run_async_as_sync(mock_cont.request_shut_down_server, None)
         except Exception as e:
-            print(e)
+            client.logger.info(e)
             mock_cont.terminate_mock_server()
             #loop = asyncio.get_event_loop()
             #loop = asyncio.get_running_loop()

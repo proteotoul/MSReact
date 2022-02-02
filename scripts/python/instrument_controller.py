@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from multiprocessing import Queue
 from protocol import Protocol
 from queue import Empty, Full
@@ -15,6 +16,7 @@ class InstrumentController:
         self.acq_cont = acq_cont
         self.acq_running = False
         self.acq_lock = asyncio.Lock()
+        self.logger = logging.getLogger(__name__)
         
     async def connect_to_instrument(self, uri):
         await self.proto.tl.connect(uri)
@@ -23,82 +25,82 @@ class InstrumentController:
         await self.proto.tl.disconnect()
         
     async def get_protocol_version(self):
-        print('Getting protocol version')
+        self.logger.info('Getting protocol version')
         await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.SERVER_PROTO_VER == msg):
-            print(f'Received version: {payload}')
+            self.logger.info(f'Received version: {payload}')
         else:
             pass
             # Raise exception
         return payload
         
     async def get_possible_params(self):
-        print('Getting possible parameters for requesting scans...')
+        self.logger.info('Getting possible parameters for requesting scans...')
         await self.proto.send_message(self.proto.MessageIDs.GET_POSSIBLE_PARAMS)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.POSSIBLE_PARAMS != msg):
             # TODO - raise exception
-            print("Response was not POSSIBLE_PARAMS message.")
+            self.logger.error("Response was not POSSIBLE_PARAMS message.")
             quit()
         return payload
         
     async def select_instrument(self, instrument):
-        print('Selecting instrument.')
+        self.logger.info('Selecting instrument.')
         await self.proto.send_message(self.proto.MessageIDs.SELECT_INSTR,
                                       instrument)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with instrument selection.")
+            self.logger.error("Problem with instrument selection.")
             raise Exception("Problem with instrument selection.")
         
     async def request_scan(self, parameters):
-        #print(f'Requesting scans with the following parameters:\n{parameters}')
+        #self.logger.info(f'Requesting scans with the following parameters:\n{parameters}')
         await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN,
                                       parameters)
         #msg, payload = await self.proto.receive_message()
         #if (self.proto.MessageIDs.OK != msg):
-        #    print("Problem with custom scan request.")
+        #    self.logger.error("Problem with custom scan request.")
         #    raise Exception("Problem with custom scan request.")
         
     async def subscribe_to_scans(self):
-        print('Subscribing for scans.')
+        self.logger.info('Subscribing for scans.')
         await self.proto.send_message(self.proto.MessageIDs.SUBSCRIBE_TO_SCANS)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with subscribing to scans.")
+            self.logger.error("Problem with subscribing to scans.")
             raise Exception("Problem with subscribing to scans.")
     
     async def unsubscribe_from_scans(self):
-        print('Unsubscribing from scans.')
+        self.logger.info('Unsubscribing from scans.')
         await self.proto.send_message(self.proto.MessageIDs.UNSUBSCRIBE_FROM_SCANS)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with unsubscribing from scans.")
+            self.logger.error("Problem with unsubscribing from scans.")
             raise Exception("Problem with unsubscribing from scans.")
         
     async def configure_acquisition(self, config):
-        print('Configure the acquisition')
+        self.logger.info('Configure the acquisition')
         await self.proto.send_message(self.proto.MessageIDs.CONFIG_ACQ, config)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with configuring acquisition.")
+            self.logger.error("Problem with configuring acquisition.")
             raise Exception("Problem with configuring acquisition.")
         
     async def start_acquisition(self):
-        print('Start transferring scans from the raw file by the mock')
+        self.logger.info('Start transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.START_ACQ)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with starting acquisition.")
+            self.logger.error("Problem with starting acquisition.")
             raise Exception("Problem with starting acquisition.")
     
     async def stop_acquisition(self):
-        print('Stop transferring scans from the raw file by the mock')
+        self.logger.info('Stop transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ)
         msg, payload = await self.proto.receive_message()
         if (self.proto.MessageIDs.OK != msg):
-            print("Problem with stopping acquisition.")
+            self.logger.error("Problem with stopping acquisition.")
             raise Exception("Problem with stopping acquisition.")
         
     async def listen_for_scans(self):
@@ -114,14 +116,14 @@ class InstrumentController:
                     await asyncio.wait_for(self.proto.receive_message(),
                                            timeout=0.001)
                 if (self.proto.MessageIDs.FINISHED_ACQ == msg):
-                    print('Received finished acquisition message.')
+                    self.logger.info('Received finished acquisition message.')
                     self.algo_sync.acq_end.set()
                     num_acq_left -= 1
                     await self.start_next_acquisition(num_acq_left)
                 elif (self.proto.MessageIDs.SCAN_TX == msg):
                     self.algo_sync.rec_scan_queue.put(payload)
                 elif (self.proto.MessageIDs.ERROR == msg):
-                    print('Received error message.')
+                    self.logger.info('Received error message.')
                     self.algo_sync.error.set()
                     break;
                 else:
@@ -130,15 +132,15 @@ class InstrumentController:
             except asyncio.TimeoutError:
                 pass
             except Exception as e:
-                print(e)
+                self.logger.error(e)
                 break
                 
         async with self.acq_lock:
             self.acq_running = False
-        print(f'Exited listening for scans loop')
+        self.logger.info(f'Exited listening for scans loop')
                 
     async def listen_for_scan_requests(self):
-        print('Start listening for scan requests')
+        self.logger.info('Start listening for scan requests')
         sleep = True
         acq_running = True
         async with self.acq_lock:
@@ -155,7 +157,7 @@ class InstrumentController:
                 
             async with self.acq_lock:
                 acq_running = self.acq_running
-        print(f'Exited listening for requests loop')
+        self.logger.info(f'Exited listening for requests loop')
         
     def run_async_as_sync(self, coroutine):
         loop = asyncio.get_event_loop()
@@ -163,7 +165,7 @@ class InstrumentController:
         return result
         
     async def wait_for_acquisition_start(self):
-        print('Waiting for acquisition to start...')
+        self.logger.info('Waiting for acquisition to start...')
         is_set = False
         while (not is_set):
             is_set = self.algo_sync.move_to_next_acq.is_set()

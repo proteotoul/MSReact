@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from transport_layer import TransportLayer
 import websockets as ws
 import ws_transport_exception as wste
@@ -39,6 +40,10 @@ class WebSocketTransport(TransportLayer):
         self.ws_protocol = None
         self.state = self.TL_STATE_DISCONNECTED
         self.start_time = 0
+        # Set the logging level to WARNING to avoid unnecessery logs coming out
+        # from this module
+        logger = logging.getLogger('websockets')
+        logger.setLevel(logging.WARNING)
 
     # __aenter__ is the asynchronous version of the __enter__ context manager
     async def __aenter__(self):

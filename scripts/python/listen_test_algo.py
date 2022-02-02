@@ -1,5 +1,6 @@
 from algorithm import Algorithm
 import json
+import logging
 import time
 import csv
 
@@ -58,6 +59,7 @@ class ListenTestAlgorithm(Algorithm):
     def __init__(self):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
         self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.logger = logging.getLogger(__name__)
         
     def configure_algorithm(self, 
                             fetch_received_scan, 
@@ -120,7 +122,7 @@ class ListenTestAlgorithm(Algorithm):
             status, scan = self.fetch_received_scan()
             if (self.AcquisitionStatus.acquisition_finished == status):
                 num_of_acquisitions = num_of_acquisitions - 1
-                print(f'Acquisition {num_of_acquisitions} finished...')
+                self.logger(f'Acquisition {num_of_acquisitions} finished...')
                 if (0 == num_of_acquisitions):
                     break
             elif (self.AcquisitionStatus.scan_available == status):
@@ -130,13 +132,13 @@ class ListenTestAlgorithm(Algorithm):
                             mass = centroid['Mz']
                     #self.request_scan({"Precursor_mz" : str(mass)})
                     #c_count = scan['CentroidCount']
-                    #print(f'Centroid count: {c_count}')
+                    #self.logger(f'Centroid count: {c_count}')
                     #time.sleep(0.001)
             else:
                 # No scan was available
                 pass
                     
-        print(f'Exited algorithm loop')      
+        self.logger(f'Exited algorithm loop')      
 '''
 
         field_names = ['CentroidCount', 'Centroids', 'DetectorName', 'MSScanLevel', 
@@ -158,8 +160,8 @@ class ListenTestAlgorithm(Algorithm):
                         #writer.writerow(scan)
                         json.dump(scan, fp, indent=2, sort_keys=True)
                     except Exception as e:
-                        print(e)
+                        self.logger(e)
                 else:
                     # No scan was available
                     pass
-        print(f'Exited algorithm loop')
+        self.logger(f'Exited algorithm loop')

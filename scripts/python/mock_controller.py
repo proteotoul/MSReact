@@ -1,3 +1,4 @@
+import logging
 import time
 import os
 import subprocess
@@ -21,6 +22,7 @@ class MockController(InstrumentController):
         self.raw_file_list = raw_file_list
         self.scan_interval = scan_interval
         super().__init__(protocol, algo_sync, acq_cont)
+        self.logger = logging.getLogger(__name__)
         # Continue updating MockController so it is implementing a full instrument controller too
         
     def create_mock_server(self):
@@ -32,26 +34,26 @@ class MockController(InstrumentController):
     def terminate_mock_server(self):
         ret_code = self.mock_proc.poll()
         if (ret_code != None):
-            print(f'Mock server terminated with return code: {ret_code}')
+            self.logger.info(f'Mock server terminated with return code: {ret_code}')
         else:
             self.mock_proc.terminate()
             ret_code = self.mock_proc.poll()
             if (ret_code == None):
-                print(f'Mock server did not terminate properly. \
-                       Please close the Mock server window.')
+                self.logger.info(f'Mock server did not terminate properly. \
+                            Please close the Mock server window.')
     
     async def set_ms_scan_tx_level(self, scan_level_range):
         if scan_level_range[0] <= scan_level_range[1]:
             if scan_level_range[0] != scan_level_range[1]:
-                print('Setting ms scan transfer level to between ' 
-                      f'MS{scan_level_range[0]} and MS{scan_level_range[1]}')
+                self.logger.info('Setting ms scan transfer level to between ' 
+                            f'MS{scan_level_range[0]} and MS{scan_level_range[1]}')
             else:
-                print(f'Setting ms scan transfer level to MS{scan_level_range[0]}')
+                self.logger.info(f'Setting ms scan transfer level to MS{scan_level_range[0]}')
             await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL,
                                           scan_level_range)
     
     async def request_shut_down_server(self):
-        print('Shutting down mock server')
+        self.logger.info('Shutting down mock server')
         await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER)
 
 if __name__ == "__main__":
