@@ -32,6 +32,7 @@ class Protocol(ProtocolLayer):
     class MessageIDs(IntEnum):
     
         # Communication message group
+        OK                      = 0
         GET_SERVER_SW_VER       = 1
         SERVER_SW_VER           = 2
         GET_SERVER_PROTO_VER    = 3
@@ -49,17 +50,19 @@ class Protocol(ProtocolLayer):
         DESELECT_INSTR          = 27
 
         # Acquisition message group
-        START_ACQ               = 100
-        STOP_ACQ                = 101
-        FINISHED_ACQ            = 102
-        SUBSCRIBE_TO_SCANS      = 103
-        SCAN_TX                 = 104
-        UNSUBSCRIBE_FROM_SCANS  = 105
-        GET_POSSIBLE_PARAMS     = 106
-        POSSIBLE_PARAMS         = 107
-        REQ_CUSTOM_SCAN         = 108
-        SET_REPEATING_SCAN      = 109
-        CLEAR_REPEATING_SCAN    = 110
+        CONFIG_ACQ              = 100
+        START_ACQ               = 101
+        STOP_ACQ                = 102
+        FINISHED_ACQ            = 103
+        SUBSCRIBE_TO_SCANS      = 104
+        SCAN_TX                 = 105
+        UNSUBSCRIBE_FROM_SCANS  = 106
+        GET_POSSIBLE_PARAMS     = 107
+        POSSIBLE_PARAMS         = 108
+        REQ_CUSTOM_SCAN         = 109
+        CANCEL_CUSTOM_SCAN      = 110
+        SET_REPEATING_SCAN      = 111
+        CLEAR_REPEATING_SCAN    = 112
 
         # Mock message group 
         SET_MS_SCAN_LVL         = 200

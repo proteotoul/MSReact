@@ -3,9 +3,9 @@ import json
 import time
 import csv
 
-class MonitorAlgorithm(Algorithm):
+class ListenTestAlgorithm(Algorithm):
     """
-    Algorithm implementing simple monitoring
+    Algorithm testing the listening functionality of the client
 
     ...
 
@@ -45,7 +45,7 @@ class MonitorAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'monitor'
+    ALGORITHM_NAME = 'listen_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -163,4 +163,3 @@ class MonitorAlgorithm(Algorithm):
                     # No scan was available
                     pass
         print(f'Exited algorithm loop')
-                

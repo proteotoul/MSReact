@@ -40,28 +40,66 @@ class InstrumentController:
         if (self.proto.MessageIDs.POSSIBLE_PARAMS != msg):
             # TODO - raise exception
             print("Response was not POSSIBLE_PARAMS message.")
+            quit()
         return payload
+        
+    async def select_instrument(self, instrument):
+        print('Selecting instrument.')
+        await self.proto.send_message(self.proto.MessageIDs.SELECT_INSTR,
+                                      instrument)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with instrument selection.")
+            raise Exception("Problem with instrument selection.")
         
     async def request_scan(self, parameters):
         #print(f'Requesting scans with the following parameters:\n{parameters}')
         await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN,
                                       parameters)
+        #msg, payload = await self.proto.receive_message()
+        #if (self.proto.MessageIDs.OK != msg):
+        #    print("Problem with custom scan request.")
+        #    raise Exception("Problem with custom scan request.")
         
     async def subscribe_to_scans(self):
         print('Subscribing for scans.')
         await self.proto.send_message(self.proto.MessageIDs.SUBSCRIBE_TO_SCANS)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with subscribing to scans.")
+            raise Exception("Problem with subscribing to scans.")
     
     async def unsubscribe_from_scans(self):
         print('Unsubscribing from scans.')
         await self.proto.send_message(self.proto.MessageIDs.UNSUBSCRIBE_FROM_SCANS)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with unsubscribing from scans.")
+            raise Exception("Problem with unsubscribing from scans.")
+        
+    async def configure_acquisition(self, config):
+        print('Configure the acquisition')
+        await self.proto.send_message(self.proto.MessageIDs.CONFIG_ACQ, config)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with configuring acquisition.")
+            raise Exception("Problem with configuring acquisition.")
         
     async def start_acquisition(self):
         print('Start transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.START_ACQ)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with starting acquisition.")
+            raise Exception("Problem with starting acquisition.")
     
     async def stop_acquisition(self):
         print('Stop transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ)
+        msg, payload = await self.proto.receive_message()
+        if (self.proto.MessageIDs.OK != msg):
+            print("Problem with stopping acquisition.")
+            raise Exception("Problem with stopping acquisition.")
         
     async def listen_for_scans(self):
         async with self.acq_lock:
@@ -82,6 +120,10 @@ class InstrumentController:
                     await self.start_next_acquisition(num_acq_left)
                 elif (self.proto.MessageIDs.SCAN_TX == msg):
                     self.algo_sync.rec_scan_queue.put(payload)
+                elif (self.proto.MessageIDs.ERROR == msg):
+                    print('Received error message.')
+                    self.algo_sync.error.set()
+                    break;
                 else:
                     # TODO - raise exception
                     pass

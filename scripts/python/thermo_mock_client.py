@@ -1,7 +1,9 @@
 import argparse
 import asyncio
 import multiprocessing
+import signal
 import time
+import traceback
 import websockets as ws
 import ws_transport_exception as wste
 from protocol import Protocol
@@ -34,7 +36,7 @@ class ThermoMockClient:
     def parse_client_arguments(self):
         # Top level parser
         parser = argparse.ArgumentParser(description='ThermoMock python client')
-        parser.add_argument('-v', '--version', action='version', 
+        parser.add_argument('-v', '--version', action='version',
                             version = VERSION,
                             help='prints the version of the application')
         algorithm_choices = self.algo_list.get_available_names()
@@ -86,6 +88,20 @@ class ThermoMockClient:
         
         return mock_controller
         
+    def set_up_instrument_controller(self, address):
+        # Use address instead of default URI
+        uri = f'ws://{address}:4649/SWSS'
+        print(uri)
+        self.ws_transport = WebSocketTransport(uri)
+        self.protocol = Protocol(self.ws_transport)
+        self.acq_man = AcquisitionManager()
+        self.acq_man.interpret_acquisition(None, None)
+        instrument_controller = InstrumentController(self.protocol,
+                                                     self.algo_sync,
+                                                     self.acq_man)
+                                                     
+        return instrument_controller
+        
     async def config_instrument(self, inst_cont, args):
         success = False
         
@@ -93,9 +109,12 @@ class ThermoMockClient:
         #                                      self.algo_sync)
         #TODO - This is fine for now but in the future the client will connect
         #       to some other URI probably.
-        await inst_cont.connect_to_instrument(self.DEFAULT_MOCK_URI)
+        await inst_cont.connect_to_instrument(f'ws://{args.address}:4649/SWSS')
         # TODO - Remove this if it's not necessary
         await asyncio.sleep(1)
+        
+        # TODO - Instrument discovery shall take place later.
+        await inst_cont.select_instrument(1)
         possible_parameters = await inst_cont.get_possible_params()
         
         await inst_cont.subscribe_to_scans()
@@ -108,8 +127,9 @@ class ThermoMockClient:
                                                     None,
                                                     None,
                                                     self.algo_sync)
+            # Note: args.raw_files were changed to None here. config_instrument should be separated just like most things in this class.                                        
             success = \
-                self.algorithm_runner.configure_and_validate_algorithm(args.raw_files,
+                self.algorithm_runner.configure_and_validate_algorithm(None,
                                                                        None,
                                                                        None,
                                                                        possible_parameters)
@@ -118,6 +138,21 @@ class ThermoMockClient:
     async def start_mock_instrument(self, mock_cont):
         await mock_cont.set_ms_scan_tx_level(self.algorithm.TRANSMITTED_SCAN_LEVEL)
         await mock_cont.listen_for_scans()
+        
+    async def start_instrument(self, inst_cont):
+        config = {
+            "AcquisitionType": "Method",
+            "AcquisitionParam": "default.meth"
+        }
+        '''
+        config = {
+            "AcquisitionType": "LimitedByTime",
+            "AcquisitionParam": "5"
+        }'''
+        
+        #await inst_cont.subscribe_to_scans()
+        await inst_cont.configure_acquisition(config)
+        await inst_cont.listen_for_scans()
         
     def run_async_as_sync(self, coroutine, args):
         #loop = asyncio.get_event_loop()
@@ -131,13 +166,28 @@ class ThermoMockClient:
         
     def custom_exception_handler(loop, context):
         # first, handle with default handler
-        loop.default_exception_handler(context)
+        #loop.default_exception_handler(context)
 
-        exception = context.get('exception')
+        message = context.get('exception', context["message"])
+        print(f'Caught exception: {message}')
+        asyncio.create_task(self.shutdown(loop))
         #if isinstance(exception, ZeroDivisionError):
         #    print(context)
         #    loop.stop()
-        print(context)
+        #print(context)
+        #loop.stop()
+        
+    async def shutdown(loop, signal=None):
+        """Cleanup tasks tied to the service's shutdown."""
+        if signal:
+            logging.info(f"Received exit signal {signal.name}...")
+        tasks = [t for t in asyncio.all_tasks() if t is not
+                 asyncio.current_task()]
+
+        [task.cancel() for task in tasks]
+
+        print(f"Cancelling {len(tasks)} outstanding tasks")
+        await asyncio.gather(*tasks, return_exceptions=True)
         loop.stop()
         
 if __name__ == "__main__":
@@ -146,7 +196,41 @@ if __name__ == "__main__":
     print(f'Selected algorithm: {args.alg}')
     print(f'Selected sub-command: {args.command}')
     if ('real' == args.command):
-        print("Not implemented.")
+        inst_cont = \
+            client.set_up_instrument_controller(args.address)
+        try:
+            result = client.run_async_as_sync(client.config_instrument, 
+                                              (inst_cont, args))
+        
+            if result:
+                #loop = asyncio.get_event_loop()
+                #loop = asyncio.get_running_loop()
+                loop = client.loop
+                
+                #signals = (signal.SIGTERM, signal.SIGINT)
+                #for s in signals:
+                #    loop.add_signal_handler(
+                #        s, lambda s=s: asyncio.create_task(client.shutdown(loop, signal=s)))
+                
+                loop.set_exception_handler(client.custom_exception_handler)
+                executor = ProcessPoolExecutor(max_workers=1)
+                algo_proc = \
+                    loop.run_in_executor(executor, client.algorithm.algorithm_body)
+                loop.run_until_complete(asyncio.gather(
+                                            #inst_cont.listen_for_scans(),
+                                            client.start_instrument(inst_cont),
+                                            inst_cont.listen_for_scan_requests(),
+                                            algo_proc))
+                                            
+                #client.run_async_as_sync(inst_cont.request_shut_down_server, None)
+        except Exception as e:
+            traceback.print_exc()
+            #print(e)
+            #inst_cont.terminate_mock_server()
+            #loop = asyncio.get_event_loop()
+            #loop = asyncio.get_running_loop()
+            loop = client.loop
+            loop.stop()
     elif ('mock' == args.command):
         print(f'Selected raw files: {args.raw_files}')
         print(f'Selected scan interval: {args.scan_interval}')

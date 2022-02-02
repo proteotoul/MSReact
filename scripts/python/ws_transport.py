@@ -77,12 +77,27 @@ class WebSocketTransport(TransportLayer):
 
     async def receive(self):
         """Listens for messages over the WebSocket protocol"""
+        message = ""
+        
         if self.TL_STATE_CONNECTED == self.state:
-            message = await self.ws_protocol.recv()
+                message = await self.ws_protocol.recv()
         else:
             raise wste.WebSocketTransportException(
                 "Cannot listen on WebSocket when not connected!",
                 "Invalid WebSocketTransport State")
+        
+        '''try:
+            if self.TL_STATE_CONNECTED == self.state:
+                message = await self.ws_protocol.recv()
+            else:
+                raise wste.WebSocketTransportException(
+                    "Cannot listen on WebSocket when not connected!",
+                    "Invalid WebSocketTransport State")
+        except ws.exceptions.ConnectionClosed:
+            print ("Connection was closed.")
+            raise wste.WebSocketTransportException(
+                "Cannot send on WebSocket when not connected!",
+                "Invalid WebSocketTransport State")'''
         return message
 
     async def send(self, message):

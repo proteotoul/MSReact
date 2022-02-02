@@ -85,7 +85,7 @@ class AlgorithmRunner:
         
     def get_scan(self):
         try:
-            if self.algo_sync.acq_end.is_set():
+            if self.algo_sync.acq_end.is_set() or self.algo_sync.error.is_set():
                 # Set acquisition finishing to true, so next time the queue
                 # is found to be empty, an acquisition finished message is 
                 # sent to the algorithm.
