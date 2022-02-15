@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import socket
 from transport_layer import TransportLayer
 import websockets as ws
 import ws_transport_exception as wste
@@ -27,19 +29,32 @@ class WebSocketTransport(TransportLayer):
     send(message)
         Sends messages over the WebSocket protocol
     """
-
-    def __init__(self, uri):
+    
+    DEFAULT_PORT = '4649'
+    DEFAULT_SERVICE = 'SWSS'
+    DEFAULT_URI = f'ws://localhost:4649/DEFAULT'
+    
+    def __init__(self, address = None):
         """
         Parameters
         ----------
         uri : str
             WebSocket uri (universal resource identifier) to connect to
         """
-        self.uri = uri
+        
+        self.uri = self.address_from_uri(address)
         self.ws_protocol = None
         self.state = self.TL_STATE_DISCONNECTED
         self.start_time = 0
+        # Set the logging level to WARNING to avoid unnecessery logs coming out
+        # from the websockets module
+        websockets_logger = logging.getLogger('websockets')
+        websockets_logger.setLevel(logging.WARNING)
+        # Create module logger
+        self.logger = logging.getLogger(__name__)
 
+    # Should reconsider if there is a need for context managers if they are not
+    # used.
     # __aenter__ is the asynchronous version of the __enter__ context manager
     async def __aenter__(self):
         await self.connect(self.uri)
@@ -48,22 +63,35 @@ class WebSocketTransport(TransportLayer):
     # __aexit__ is the asynchronous version of the __exit__ context manager
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
+        
+    def address_from_uri(self, address = None):
+        if address is None:
+            address = socket.gethostbyname(socket.gethostname())
+        return f'ws://{address}:{self.DEFAULT_PORT}/{self.DEFAULT_SERVICE}'
 
-    async def connect(self, uri):
+    async def connect(self, address = None):
         """Connects to a uri using WebSocket protocol
         Parameters
         ----------
         uri : str
             WebSocket uri (universal resource identifier) to connect to
         """
+        success = False
+        
         if self.TL_STATE_DISCONNECTED == self.state:
-            self.uri = uri
-            self.ws_protocol = await ws.connect(uri=self.uri)
-            self.state = self.TL_STATE_CONNECTED
+            self.uri = self.address_from_uri(address)
+            self.logger.info(f'Uri: {self.uri}')
+            try:
+                self.ws_protocol = await ws.connect(uri=self.uri)
+                self.state = self.TL_STATE_CONNECTED
+                success = True
+            except ConnectionRefusedError as crf:
+                self.logger.error("The remote computer refused the network connection.")
         else:
-            raise wste.WebSocketTransportException(
-                    "Cannot connect to uri when already connected!", 
-                    "Invalid WebSocketTransport State")
+            self.logger.error("Invalid WebSocketTransport State - " +
+                              "Cannot connect to uri when already connected!")
+                    
+        return success
 
     async def disconnect(self):
         """Disconnects from a uri"""
@@ -77,12 +105,27 @@ class WebSocketTransport(TransportLayer):
 
     async def receive(self):
         """Listens for messages over the WebSocket protocol"""
+        message = ""
+        
         if self.TL_STATE_CONNECTED == self.state:
-            message = await self.ws_protocol.recv()
+                message = await self.ws_protocol.recv()
         else:
             raise wste.WebSocketTransportException(
                 "Cannot listen on WebSocket when not connected!",
                 "Invalid WebSocketTransport State")
+        
+        '''try:
+            if self.TL_STATE_CONNECTED == self.state:
+                message = await self.ws_protocol.recv()
+            else:
+                raise wste.WebSocketTransportException(
+                    "Cannot listen on WebSocket when not connected!",
+                    "Invalid WebSocketTransport State")
+        except ws.exceptions.ConnectionClosed:
+            print ("Connection was closed.")
+            raise wste.WebSocketTransportException(
+                "Cannot send on WebSocket when not connected!",
+                "Invalid WebSocketTransport State")'''
         return message
 
     async def send(self, message):

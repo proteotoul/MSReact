@@ -1,12 +1,10 @@
 from algorithm import Algorithm
-import json
 import logging
 import time
-import csv
 
-class MonitorAlgorithm(Algorithm):
+class RequestTestAlgorithm(Algorithm):
     """
-    Algorithm implementing simple monitoring
+    Algorithm for testing scan requests functionality of the client
 
     ...
 
@@ -46,7 +44,7 @@ class MonitorAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'monitor'
+    ALGORITHM_NAME = 'request_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -140,29 +138,19 @@ class MonitorAlgorithm(Algorithm):
                     
         self.logger.info(f'Exited algorithm loop')      
 '''
-
-        field_names = ['CentroidCount', 'Centroids', 'DetectorName', 'MSScanLevel', 
-                  'PrecursorCharge', 'PrecursorMass', 'ScanNumber']
-                  
-        #with open('FusionTrial.csv', 'w') as csvfile:
-        with open('FusionTrial.json', 'w') as fp:
-            #writer = csv.DictWriter(csvfile, fieldnames = field_names)
-            #writer.writeheader()
             
-            self.start_acquisition()
-            
-            while True:
-                status, scan = self.fetch_received_scan()
-                if (self.AcquisitionStatus.acquisition_finished == status):
-                    break
-                elif (self.AcquisitionStatus.scan_available == status):
-                    try:
-                        #writer.writerow(scan)
-                        json.dump(scan, fp, indent=2, sort_keys=True)
-                    except Exception as e:
-                        self.logger.error(e)
-                else:
-                    # No scan was available
-                    pass
+        self.start_acquisition()
+        
+        while True:
+            status, scan = self.fetch_received_scan()
+            if (self.AcquisitionStatus.acquisition_finished == status):
+                break
+            elif (self.AcquisitionStatus.scan_available == status):
+                if (2 == scan["MSScanLevel"]):
+                    time.sleep(0.4)
+                    self.request_scan({"Precursor_mz": str(scan["PrecursorMass"])})
+            else:
+                # No scan was available
+                pass
         self.logger.info(f'Exited algorithm loop')
                 

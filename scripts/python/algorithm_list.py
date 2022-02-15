@@ -1,9 +1,12 @@
 from algorithm import Algorithm
 from monitor_algorithm import MonitorAlgorithm
-from dsso_algorithm import DSSOAlgorithm
+from request_test_algo import RequestTestAlgorithm
+from listen_test_algo import ListenTestAlgorithm
+#from dsso_algorithm import DSSOAlgorithm
 
 class AlgorithmList:
-    ALGO_LIST = [MonitorAlgorithm, DSSOAlgorithm]
+    #ALGO_LIST = [MonitorAlgorithm, DSSOAlgorithm]
+    ALGO_LIST = [MonitorAlgorithm, RequestTestAlgorithm, ListenTestAlgorithm]
     
     def __init__(self):
         pass
