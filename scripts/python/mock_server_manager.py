@@ -3,9 +3,9 @@ import time
 import os
 import subprocess
 from subprocess import Popen, CREATE_NEW_CONSOLE
-from instrument_controller import InstrumentController
+from instrument_server_manager import InstrumentServerManager
 
-class MockController(InstrumentController):
+class MockServerManager(InstrumentServerManager):
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
     DEFAULT_RAW_FILE_LIST = ["D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
     DEFAULT_SCAN_INTERVAL = 1
@@ -14,24 +14,30 @@ class MockController(InstrumentController):
     def __init__(self, 
                  protocol,
                  algo_sync,
-                 acq_cont,
-                 uri=DEFAULT_URI,
-                 raw_file_list = DEFAULT_RAW_FILE_LIST, 
-                 scan_interval = DEFAULT_SCAN_INTERVAL):
-        self.uri = uri
-        self.raw_file_list = raw_file_list
-        self.scan_interval = scan_interval
+                 acq_cont):
+        self.raw_file_list = None
+        self.scan_interval = None
         super().__init__(protocol, algo_sync, acq_cont)
         self.logger = logging.getLogger(__name__)
-        # Continue updating MockController so it is implementing a full instrument controller too
+        # Continue updating MockServerManager so it is implementing a full
+        # instrument controller too
         
-    def create_mock_server(self):
+    def create_mock_server(self,
+                           raw_file_list = DEFAULT_RAW_FILE_LIST,
+                           scan_interval = DEFAULT_SCAN_INTERVAL):
+                           
+        self.raw_file_list = raw_file_list
+        self.scan_interval = scan_interval
+        
         msg = self.MOCK_SERVER_PATH + ['mock'] + \
               [", ".join(self.raw_file_list)] + \
               [str(self.scan_interval)]
         self.mock_proc = Popen(msg, creationflags=CREATE_NEW_CONSOLE)
         
     def terminate_mock_server(self):
+        self.raw_file_list = None
+        self.scan_interval = None
+    
         ret_code = self.mock_proc.poll()
         if (ret_code != None):
             self.logger.info(f'Mock server terminated with return code: {ret_code}')
@@ -57,7 +63,7 @@ class MockController(InstrumentController):
         await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER)
 
 if __name__ == "__main__":
-    mock_controller = MockController()
-    mock_controller.create_mock_server()
+    mock_server_manager = MockServerManager()
+    mock_server_manager.create_mock_server()
     time.sleep(5)
-    mock_controller.terminate_mock_server()
+    mock_server_manager.terminate_mock_server()

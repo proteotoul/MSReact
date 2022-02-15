@@ -4,7 +4,7 @@ from multiprocessing import Queue
 from protocol import Protocol
 from queue import Empty, Full
 
-class InstrumentController:
+class InstrumentServerManager:
     '''
     Parameters
     ----------
@@ -14,14 +14,24 @@ class InstrumentController:
         self.proto = protocol
         self.algo_sync = algo_sync
         self.acq_cont = acq_cont
+        self.address = None
         self.acq_running = False
         self.acq_lock = asyncio.Lock()
         self.logger = logging.getLogger(__name__)
         
-    async def connect_to_instrument(self, uri):
-        await self.proto.tl.connect(uri)
+    async def connect_to_server(self, address = None):
+        success = False
         
-    async def disconnect_from_instrument():
+        if address is not None:
+            self.address = address
+            success = await self.proto.tl.connect(self.address)
+        else:
+            success = await self.proto.tl.connect()
+        
+        return success
+        
+    async def disconnect_from_server():
+        self.address = None
         await self.proto.tl.disconnect()
         
     async def get_protocol_version(self):

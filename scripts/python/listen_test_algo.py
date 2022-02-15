@@ -122,7 +122,7 @@ class ListenTestAlgorithm(Algorithm):
             status, scan = self.fetch_received_scan()
             if (self.AcquisitionStatus.acquisition_finished == status):
                 num_of_acquisitions = num_of_acquisitions - 1
-                self.logger(f'Acquisition {num_of_acquisitions} finished...')
+                self.logger.info(f'Acquisition {num_of_acquisitions} finished...')
                 if (0 == num_of_acquisitions):
                     break
             elif (self.AcquisitionStatus.scan_available == status):
@@ -132,13 +132,13 @@ class ListenTestAlgorithm(Algorithm):
                             mass = centroid['Mz']
                     #self.request_scan({"Precursor_mz" : str(mass)})
                     #c_count = scan['CentroidCount']
-                    #self.logger(f'Centroid count: {c_count}')
+                    #self.logger.info(f'Centroid count: {c_count}')
                     #time.sleep(0.001)
             else:
                 # No scan was available
                 pass
                     
-        self.logger(f'Exited algorithm loop')      
+        self.logger.info(f'Exited algorithm loop')      
 '''
 
         field_names = ['CentroidCount', 'Centroids', 'DetectorName', 'MSScanLevel', 
@@ -160,8 +160,8 @@ class ListenTestAlgorithm(Algorithm):
                         #writer.writerow(scan)
                         json.dump(scan, fp, indent=2, sort_keys=True)
                     except Exception as e:
-                        self.logger(e)
+                        self.logger.error(e)
                 else:
                     # No scan was available
                     pass
-        self.logger(f'Exited algorithm loop')
+        self.logger.info(f'Exited algorithm loop')

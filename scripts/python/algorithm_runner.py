@@ -61,9 +61,9 @@ class AlgorithmRunner:
         #TODO - This should be reviewed
         self.acquisition_finishing = False
         
-    def configure_and_validate_algorithm(self, methods, 
-                                         sequence, rx_scan_format, 
-                                         req_scan_format):
+    def configure_algorithm(self, methods, 
+                            sequence, rx_scan_format, 
+                            req_scan_format):
         self.algorithm.configure_algorithm(self.get_scan, 
                                            self.request_scan,
                                            self.start_acquisition)
