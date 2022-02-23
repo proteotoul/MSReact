@@ -92,9 +92,4 @@ class Protocol(ProtocolLayer):
         else:
             payload = None
             
-        '''
-        if ((self.MessageIDs.SCAN_TX == msg_id) or
-            (self.MessageIDs.POSSIBLE_PARAMS == msg_id)):
-            payload = msgpack.unpackb(msg[1:])
-            '''
         return (msg_id, payload)

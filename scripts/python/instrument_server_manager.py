@@ -17,6 +17,8 @@ class InstrumentServerManager:
         self.address = None
         self.acq_running = False
         self.acq_lock = asyncio.Lock()
+        self.resp_cond = asyncio.Condition()
+        self.resp = None
         self.logger = logging.getLogger(__name__)
         
     async def connect_to_server(self, address = None):
@@ -148,6 +150,40 @@ class InstrumentServerManager:
         async with self.acq_lock:
             self.acq_running = False
         self.logger.info(f'Exited listening for scans loop')
+        
+    async def listen_for_messages(self):
+        self.listening = True
+        while self.listening:
+            msg, payload = await self.proto.receive_message()
+            dispatch_message(msg, payload)
+            
+    async def dispatch_message(self, msg, payload):
+        if (self.proto.MessageIDs.FINISHED_ACQ == msg):
+            pass
+        elif (self.proto.MessageIDs.SCAN_TX == msg):
+            self.algo_sync.rec_scan_queue.put(payload)
+        elif ((self.proto.MessageIDs.OK == msg) or
+              (self.proto.MessageIDs.SERVER_SW_VER == msg) or
+              (self.proto.MessageIDs.SERVER_PROTO_VER == msg) or
+              (self.proto.MessageIDs.AVAILABLE_INSTR == msg) or
+              (self.proto.MessageIDs.INSTR_INFO == msg) or
+              (self.proto.MessageIDs.POSSIBLE_PARAMS == msg)):
+            async with self.resp_cond:
+                self.resp = (msg, payload)
+                self.resp_cond.notify()
+        else:
+            pass
+            
+    def acquisition_finished(self):
+        # Do all actions related to acquisition finishing
+        pass
+        
+    async def wait_for_response(self):
+        async with self.resp_cond:
+            await self.resp_cond.wait()
+            received_resp, resp_payload = self.resp
+            self.resp = None
+        return received_resp, resp_payload
                 
     async def listen_for_scan_requests(self):
         self.logger.info('Start listening for scan requests')

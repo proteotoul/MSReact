@@ -110,7 +110,7 @@ class MSReactorClient:
         self.transport = WebSocketTransport()
         self.protocol = Protocol(self.transport)
         
-    def normal_app(self, args):
+    async def normal_app(self, loop, args):
         # Init transport and protocol layer
         self.init_communication_layer()
         
@@ -125,20 +125,17 @@ class MSReactorClient:
                                                      self.acq_man)
 
         self.logger.info(f'Instrument address: {args.address}')
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server,
-                                  (args.address,)):
+        success = await self.inst_serv_man.connect_to_server(args.address)
+        if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
-            time.sleep(1)
+            await asyncio.sleep(1)
             
             # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
+            await self.inst_serv_man.select_instrument(1)
             
             # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
-            
+            possible_params = await self.inst_serv_man.get_possible_params()
             
             algorithm_type = self.algo_list.find_by_name(args.alg)
             if algorithm_type is not None:
@@ -150,18 +147,12 @@ class MSReactorClient:
                 # Note: args.raw_files were changed to None here.                                        
                 if self.algorithm_runner.configure_algorithm(None, None, None,
                                                              possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
+                    algo_proc = loop.run_in_executor(self.executor,
+                                                     self.algo.algorithm_body)
                                                      
-                    tasks = asyncio.gather(self.start_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
-                    try:
-                        self.loop.run_until_complete(tasks)
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.loop.stop()
+                    await asyncio.gather(self.start_instrument(),
+                                         self.inst_serv_man.listen_for_scan_requests(),
+                                         algo_proc)
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
@@ -198,7 +189,6 @@ class MSReactorClient:
             possible_params = \
                 self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
                                        None)
-            
             
             algorithm_type = self.algo_list.find_by_name(args.alg)
             if algorithm_type is not None:
@@ -350,7 +340,12 @@ if __name__ == "__main__":
     client.logger.info(f'Selected sub-command: {args.command}')
     
     if ('normal' == args.command):
-        client.normal_app(args)
+        loop = asyncio.get_event_loop()
+        try:
+            loop.run_until_complete(client.normal_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()
     elif ('mock' == args.command):
         client.mock_app(args)
     elif ('test' == args.command):
