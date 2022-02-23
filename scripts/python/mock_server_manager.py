@@ -55,12 +55,12 @@ class MockServerManager(InstrumentServerManager):
                             f'MS{scan_level_range[0]} and MS{scan_level_range[1]}')
             else:
                 self.logger.info(f'Setting ms scan transfer level to MS{scan_level_range[0]}')
-            await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL,
+            await self.proto.send_message(self.proto.MessageIDs.SET_MS_SCAN_LVL_CMD,
                                           scan_level_range)
     
     async def request_shut_down_server(self):
         self.logger.info('Shutting down mock server')
-        await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER)
+        await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER_CMD)
 
 if __name__ == "__main__":
     mock_server_manager = MockServerManager()

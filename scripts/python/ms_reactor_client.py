@@ -105,6 +105,12 @@ class MSReactorClient:
                                  help='address to the MSReactor server')
 
         return parser.parse_args()
+        
+    def instrument_server_manager_cb(self, id, args):
+        pass
+        
+    def algorithm_runner_cb(self, id, args):
+        pass
     
     def init_communication_layer(self):
         self.transport = WebSocketTransport()
@@ -131,6 +137,7 @@ class MSReactorClient:
             # Wait a bit after connection
             await asyncio.sleep(1)
             
+            loop.create_task(self.inst_serv_man.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
             await self.inst_serv_man.select_instrument(1)
             
@@ -160,7 +167,7 @@ class MSReactorClient:
             self.logger.error("Connection Failed")
         
     
-    def mock_app(self, args):
+    async def mock_app(self, loop, args):
         # Init transport and protocol layer
         self.init_communication_layer()
         
@@ -177,18 +184,18 @@ class MSReactorClient:
         self.inst_serv_man.create_mock_server(args.raw_files,
                                               args.scan_interval)
 
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server, None):
+        success = await self.inst_serv_man.connect_to_server()
+        if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
-            time.sleep(1)
+            await asyncio.sleep(1)
             
+            loop.create_task(self.inst_serv_man.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
+            await self.inst_serv_man.select_instrument(1)
             
             # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
+            possible_params = await self.inst_serv_man.get_possible_params()
             
             algorithm_type = self.algo_list.find_by_name(args.alg)
             if algorithm_type is not None:
@@ -203,16 +210,14 @@ class MSReactorClient:
                     algo_proc = \
                         self.loop.run_in_executor(self.executor,
                                                   self.algo.algorithm_body)
-                                                     
-                    tasks = asyncio.gather(self.start_mock_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
+                    
                     try:
-                        self.loop.run_until_complete(tasks)
-                        self.run_async_as_sync(self.inst_serv_man.request_shut_down_server, None)
+                        await asyncio.gather(self.start_mock_instrument(),
+                                             self.inst_serv_man.listen_for_scan_requests(),
+                                             algo_proc)
+                        await self.inst_serv_man.request_shut_down_server()
                     except Exception as e:
                         traceback.print_exc()
-                        self.loop.stop()
                         self.inst_serv_man.terminate_mock_server()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
@@ -282,7 +287,7 @@ class MSReactorClient:
     async def start_mock_instrument(self):
         await self.inst_serv_man.subscribe_to_scans()
         await self.inst_serv_man.set_ms_scan_tx_level(self.algo.TRANSMITTED_SCAN_LEVEL)
-        await self.inst_serv_man.listen_for_scans()
+        await self. inst_serv_man.prepare_acquisition()
         
     async def start_instrument(self):
         config = {
@@ -297,7 +302,7 @@ class MSReactorClient:
         
         await self.inst_serv_man.subscribe_to_scans()
         await self.inst_serv_man.configure_acquisition(config)
-        await self.inst_serv_man.listen_for_scans()
+        await self. inst_serv_man.prepare_acquisition()
         
     def run_async_as_sync(self, coroutine, args):
         loop = self.loop
@@ -338,15 +343,19 @@ if __name__ == "__main__":
     args = client.parse_client_arguments()
     client.logger.info(f'Selected algorithm: {args.alg}')
     client.logger.info(f'Selected sub-command: {args.command}')
+    loop = asyncio.get_event_loop()
     
     if ('normal' == args.command):
-        loop = asyncio.get_event_loop()
         try:
             loop.run_until_complete(client.normal_app(loop, args))
         except Exception as e:
             traceback.print_exc()
             loop.stop()
     elif ('mock' == args.command):
-        client.mock_app(args)
+        try:
+            loop.run_until_complete(client.mock_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()
     elif ('test' == args.command):
         client.test_app(args)

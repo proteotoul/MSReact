@@ -32,41 +32,42 @@ class Protocol(ProtocolLayer):
     class MessageIDs(IntEnum):
     
         # Communication message group
-        OK                      = 0
-        GET_SERVER_SW_VER       = 1
-        SERVER_SW_VER           = 2
-        GET_SERVER_PROTO_VER    = 3
-        SERVER_PROTO_VER        = 4
-        ERROR                   = 5
-
+        OK_RSP                      = 0
+        ERROR_RSP                   = 1
+        ERROR_EVT                   = 2
+        GET_SERVER_SW_VER_CMD       = 3
+        SERVER_SW_VER_RSP           = 4
+        GET_SERVER_PROTO_VER_CMD    = 5
+        SERVER_PROTO_VER_RSP        = 6
+        
         # Instrument message group
-        GET_AVAILABLE_INSTR     = 20
-        AVAILABLE_INSTR         = 21
-        GET_INSTR_INFO          = 22
-        INSTR_INFO              = 23
-        GET_INSTR_STATE         = 24
-        INSTR_STATE             = 25
-        SELECT_INSTR            = 26
-        DESELECT_INSTR          = 27
+        GET_AVAILABLE_INSTR_CMD     = 20
+        AVAILABLE_INSTR_RSP         = 21
+        GET_INSTR_INFO_CMD          = 22
+        INSTR_INFO_RSP              = 23
+        GET_INSTR_STATE_CMD         = 24
+        INSTR_STATE_RSP             = 25
+        SELECT_INSTR_CMD            = 26
+        DESELECT_INSTR_CMD          = 27
 
         # Acquisition message group
-        CONFIG_ACQ              = 100
-        START_ACQ               = 101
-        STOP_ACQ                = 102
-        FINISHED_ACQ            = 103
-        SUBSCRIBE_TO_SCANS      = 104
-        SCAN_TX                 = 105
-        UNSUBSCRIBE_FROM_SCANS  = 106
-        GET_POSSIBLE_PARAMS     = 107
-        POSSIBLE_PARAMS         = 108
-        REQ_CUSTOM_SCAN         = 109
-        CANCEL_CUSTOM_SCAN      = 110
-        SET_REPEATING_SCAN      = 111
-        CLEAR_REPEATING_SCAN    = 112
+        CONFIG_ACQ_CMD              = 100
+        START_ACQ_CMD               = 101
+        STOP_ACQ_CMD                = 102
+        FINISHED_ACQ_EVT            = 103
+        SUBSCRIBE_TO_SCANS_CMD      = 104
+        SCAN_EVT                    = 105
+        UNSUBSCRIBE_FROM_SCANS_CMD  = 106
+        GET_POSSIBLE_PARAMS_CMD     = 107
+        POSSIBLE_PARAMS_RSP         = 108
+        REQ_CUSTOM_SCAN_CMD         = 109
+        CANCEL_CUSTOM_SCAN_CMD      = 110
+        SET_REPEATING_SCAN_CMD      = 111
+        CLEAR_REPEATING_SCAN_CMD    = 112
 
         # Mock message group 
-        SET_MS_SCAN_LVL         = 200
-        SHUT_DOWN_MOCK_SERVER   = 201
+        SET_MS_SCAN_LVL_CMD         = 200
+        SHUT_DOWN_MOCK_SERVER_CMD   = 201
     
     def __init__(self, transport_layer):
         self.tl = transport_layer

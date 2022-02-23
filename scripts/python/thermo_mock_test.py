@@ -31,8 +31,8 @@ async def main():
                 if ((payload != None) and (payload['CentroidCount'] == 0)):
                     print('Received MS2 scan.')
                     print(f'Message: {msg.name}\nPayload:{payload}')
-                if (protocol.MessageIDs.FINISHED_ACQ == msg):
-                    await protocol.send_message(protocol.MessageIDs.SHUT_DOWN_MOCK_SERVER)
+                if (protocol.MessageIDs.FINISHED_ACQ_EVT == msg):
+                    await protocol.send_message(protocol.MessageIDs.SHUT_DOWN_MOCK_SERVER_CMD)
                     print('Shutting down server...')
             except ws.exceptions.ConnectionClosed:
                 print('WebSocket connection closed. '
