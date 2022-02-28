@@ -13,9 +13,11 @@ class InstrumentServerManager:
     '''
     
     class CallbackIds(Enum):
-        BLA = 1
+        SCAN = 1
+        FINISHED_ACQUISITION = 2
+        ERROR = 3
     
-    def __init__(self, protocol, algo_sync, acq_cont):
+    def __init__(self, protocol, algo_sync, acq_cont, app_cb, loop):
         self.proto = protocol
         self.algo_sync = algo_sync
         self.acq_cont = acq_cont
@@ -25,6 +27,10 @@ class InstrumentServerManager:
         self.resp_cond = asyncio.Condition()
         self.resp = None
         self.logger = logging.getLogger(__name__)
+        self.app_cb = app_cb
+        
+        self.msg_req_queue = multiprocessing.Manager().Queue()
+        self.loop = loop
         
     async def connect_to_server(self, address = None):
         success = False
@@ -41,16 +47,18 @@ class InstrumentServerManager:
         self.address = None
         await self.proto.tl.disconnect()
         
-    async def get_protocol_version(self):
+    def get_protocol_version(self):
         self.logger.info('Getting protocol version')
-        await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD)
-        msg, payload = await self.wait_for_response()
-        if (self.proto.MessageIDs.SERVER_PROTO_VER_RSP == msg):
-            self.logger.info(f'Received version: {payload}')
-        else:
-            pass
+        self.msg_req_queue.put((self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD,
+                                self.proto.MessageIDs.SERVER_PROTO_VER_RSP))
+        #await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD)
+        #msg, payload = await self.wait_for_response()
+        #if (self.proto.MessageIDs.SERVER_PROTO_VER_RSP == msg):
+        #    self.logger.info(f'Received version: {payload}')
+        #else:
+        #    pass
             # Raise exception
-        return payload
+        #return payload
         
     async def get_possible_params(self):
         self.logger.info('Getting possible parameters for requesting scans...')
@@ -136,21 +144,35 @@ class InstrumentServerManager:
                 self.resp_cond.notify()
         elif ('EVT' == msg_type):
             if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
-                self.logger.info('Received finished acquisition message.')
-                self.algo_sync.acq_end.set()
-                self.num_acq_left -= 1
-                if self.num_acq_left != 0:
-                    await self.start_next_acquisition(num_acq_left)
-                else:
-                    async with self.acq_lock:
-                        self.acq_running = False
-                    self.listening = False
+                await self.app_cb(self.CallbackIds.ACQUISITION_FINISHED_CB, 
+                                  None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
                 self.algo_sync.rec_scan_queue.put(payload)
         else:
             pass
             
             # That is an error situation
+    
+    async def listen_for_message_requests(self):
+        self.listening_req = True
+        self.logger.info('Listening for message requests started')
+        while self.listening_req:
+            msg, exp_rsp = \
+                await self.loop.run_in_executor(None, self.msg_req_queue.get())
+            rsp_payload = await self.submit_message(msg, exp_rsp)
+    
+    async def submit_message(self, msg, expected_rsp):
+        payload = None
+        await self.proto.send_message(msg)
+        if expected_rsp is not None:
+            received_rsp, payload = await self.wait_for_response()
+            if (received_rsp != expected_rsp):
+                error_msg = f'Problem with sending message: {msg.name}. ' +
+                            f'Expected response: {excpected_rsp.name}, ' +
+                            f'received response: {received_rsp.name}.'
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+        return payload
             
     def acquisition_finished(self):
         # Do all actions related to acquisition finishing

@@ -37,8 +37,8 @@ class Algorithm:
 
     '''Method - TODO: Create default method based on real method.'''
     ACQUISITION_METHOD = {}   
-    '''Sequence - TODO: Create default method based on real method.'''
-    ACQUISITION_SEQUENCE = {}
+    '''Sequence - List of Acquisitions'''
+    ACQUISITION_SEQUENCE = []
     '''Cycle interval - TODO: This is only for mock.'''
     CYCLE_INTERVAL = 10
     '''Name of the algorithm. This is a mandatory field for the algorithms'''

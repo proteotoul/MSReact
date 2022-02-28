@@ -1,5 +1,21 @@
 from pathlib import Path
 
+class AcquisitionWorkflows:
+    def __init__(self, supported_workflows):
+        self.supported_workflows = supported_workflows
+        
+    def get_available_names(self):
+        return [AcquisitionWorkflow.name for AcquisitionWorkflow 
+                in self.supported_workflows]
+        
+    def find_by_name(self, name):
+        workflow = None
+        for i in range(len(self.supported_workflows)):
+            if name == self.supported_workflows[i].name:
+                workflow = self.supported_workflows[i]
+                break
+        return workflow
+
 class AcquisitionWorkflow:
     name = "base acquisition workflow"
     is_supported = False

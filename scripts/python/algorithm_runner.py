@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
+from enum import Enum
 import multiprocessing
 from queue import Empty, Full
 
@@ -40,7 +41,16 @@ class AlgorithmRunner:
     """Default cycle interval - TODO: This is only for mock."""
     DEFAULT_CYCLE_INTERVAL = 10
     
-    def __init__(self, algorithm, method, sequence, algo_sync):
+    class CallbackIds(Enum):
+        REQUEST_SCAN = 1
+        FETCH_RECEIVED_SCAN = 2
+        REQUEST_REPEATING_SCAN = 3
+        CANCEL_REPEATING_SCAN = 4
+        REQUEST_ACQUISITION_START = 5
+        REQUEST_ACQUISITION_STOP = 6
+        ERROR = 7
+    
+    def __init__(self, algorithm, method, sequence, algo_sync, app_cb, loop):
         """
         Parameters
         ----------
@@ -60,11 +70,13 @@ class AlgorithmRunner:
         
         #TODO - This should be reviewed
         self.acquisition_finishing = False
+        self.app_cb = app_cb
+        self.loop = loop
         
     def configure_algorithm(self, methods, 
                             sequence, rx_scan_format, 
                             req_scan_format):
-        self.algorithm.configure_algorithm(self.get_scan, 
+        self.algorithm.configure_algorithm(self.get_scan,
                                            self.request_scan,
                                            self.start_acquisition)
         success = \
@@ -104,4 +116,11 @@ class AlgorithmRunner:
         
     def start_acquisition(self):
         self.algo_sync.move_to_next_acq.set()
+        
+    async def run_algorithm(self):
+        for acquisition in self.algorithm.ACQUISITION_SEQUENCE:
+            acquisition.pre_acquisition()
+            # Start the acquisition
+            await self.loop.acquisition.intra_acquisition()
+            
     

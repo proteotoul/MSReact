@@ -106,11 +106,38 @@ class MSReactorClient:
 
         return parser.parse_args()
         
-    def instrument_server_manager_cb(self, id, args):
-        pass
+    async def instrument_server_manager_cb(self, id, args):
+        if (self.inst_serv_man.CallbackIds.SCAN == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.FINISHED_ACQUISITION == id):
+            self.logger.info('Received finished acquisition message.')
+            self.algo_sync.acq_end.set()
+            self.num_acq_left -= 1
+            if self.num_acq_left != 0:
+                await self.inst_serv_man.start_next_acquisition(num_acq_left)
+            else:
+                async with self.acq_lock:
+                    self.acq_running = False
+                self.listening = False
+        elif (self.inst_serv_man.CallbackIds.ERROR_CB == id):
+            pass
         
-    def algorithm_runner_cb(self, id, args):
-        pass
+    async def algorithm_runner_cb(self, id, args):
+        if (self.inst_serv_man.CallbackIds.REQUEST_SCAN == id):
+            await self.inst_serv_man.request_scan(args)
+        elif (self.inst_serv_man.CallbackIds.FETCH_RECEIVED_SCAN == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.REQUEST_REPEATING_SCAN == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.CANCEL_REPEATING_SCAN == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.REQUEST_ACQUISITION_START == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.REQUEST_ACQUISITION_STOP == id):
+            pass
+        elif (self.inst_serv_man.CallbackIds.ERROR == id):
+            pass
+        
     
     def init_communication_layer(self):
         self.transport = WebSocketTransport()
@@ -126,9 +153,11 @@ class MSReactorClient:
         self.acq_man.interpret_acquisition(None, None)
         
         # Init the instrument server manager
-        self.inst_serv_man = InstrumentServerManager(self.protocol,
-                                                     self.algo_sync,
-                                                     self.acq_man)
+        self.inst_serv_man = \
+            InstrumentServerManager(self.protocol,
+                                    self.algo_sync,
+                                    self.acq_man,
+                                    self.instrument_server_manager_cb)
 
         self.logger.info(f'Instrument address: {args.address}')
         success = await self.inst_serv_man.connect_to_server(args.address)
@@ -150,8 +179,10 @@ class MSReactorClient:
                 self.algorithm_runner = AlgorithmRunner(self.algo, 
                                                         None,
                                                         None,
-                                                        self.algo_sync)
-                # Note: args.raw_files were changed to None here.                                        
+                                                        self.algo_sync,
+                                                        self.algorithm_runner_cb,
+                                                        self.loop)
+                # Note: args.raw_files were changed to None here.
                 if self.algorithm_runner.configure_algorithm(None, None, None,
                                                              possible_params):
                     algo_proc = loop.run_in_executor(self.executor,
@@ -203,7 +234,9 @@ class MSReactorClient:
                 self.algorithm_runner = AlgorithmRunner(self.algo, 
                                                         None,
                                                         None,
-                                                        self.algo_sync)
+                                                        self.algo_sync,
+                                                        self.algorithm_runner_cb,
+                                                        self.loop)
                 # Note: args.raw_files were changed to None here.                                       
                 if self.algorithm_runner.configure_algorithm(None, None, None,
                                                              possible_params):
@@ -262,7 +295,9 @@ class MSReactorClient:
                 self.algorithm_runner = AlgorithmRunner(self.algo, 
                                                         None,
                                                         None,
-                                                        self.algo_sync)
+                                                        self.algo_sync
+                                                        self.algorithm_runner_cb,
+                                                        self.loop)
                 # Note: args.raw_files were changed to None here.                                         
                 if self.algorithm_runner.configure_algorithm(None, None, None,
                                                              possible_params):

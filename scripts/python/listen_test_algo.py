@@ -1,4 +1,7 @@
 from algorithm import Algorithm
+from acquisition import Acquisition
+from tribid_instrument import ThermoTribidInstrument
+import acquisition_workflow as aw
 import json
 import logging
 import time
@@ -58,7 +61,15 @@ class ListenTestAlgorithm(Algorithm):
     
     def __init__(self):
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_sequence = \
+            [
+                Acquisition(name = 'Listen_test_algo_first_acquisition',
+                            instrument = ThermoTribidInstrument(),
+                            acquisition_workflow = aw.Listening(),
+                            pre_acquisition = self.pre_acquisition,
+                            intra_acquisition = self.intra_acquisition,
+                            post_acquisition = self.intra_acquisition)
+            ]
         self.logger = logging.getLogger(__name__)
         
     def configure_algorithm(self, 
@@ -113,7 +124,29 @@ class ListenTestAlgorithm(Algorithm):
         self.received_scan_format = rx_scan_format
         self.requested_scan_format = req_scan_format
         return success
+    
+    def pre_acquisition(self):
+        self.logger.info('Executing pre-acquisition steps.')
+        self.fp = open('FusionTrial.json', 'w')
         
+    def intra_acquisition(self):
+        self.logger.info('Executing intra-acquisition steps.')
+        while True:
+            status, scan = self.fetch_received_scan()
+            if (self.AcquisitionStatus.acquisition_finished == status):
+                break
+            elif (self.AcquisitionStatus.scan_available == status):
+                try:
+                    json.dump(scan, self.fp, indent=2, sort_keys=True)
+                except Exception as e:
+                    self.logger.error(e)
+            else:
+                # No scan was available
+                pass
+    
+    def post_acquisition(self):
+        self.logger.info('Executing post-acquisition steps.')
+    
     def algorithm_body(self):
         # This is temporary until the handling of sequence and methods are figured out
         ''''
@@ -165,3 +198,9 @@ class ListenTestAlgorithm(Algorithm):
                     # No scan was available
                     pass
         self.logger.info(f'Exited algorithm loop')
+        
+if __name__ == "__main__":
+    algo = ListenTestAlgorithm()
+    algo.pre_acquisition()
+    algo.intra_acquisition()
+    algo.post_acquisition()
