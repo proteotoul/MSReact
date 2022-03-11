@@ -37,13 +37,14 @@ class MSReactorClient:
         self.loop = asyncio.new_event_loop()
         self.loop.set_exception_handler(self.custom_exception_handler)
         asyncio.set_event_loop(self.loop)
-        self.executor = ProcessPoolExecutor(max_workers=1)
+        self.executor = ProcessPoolExecutor(max_workers=3)
         
         # Initialise algorithm, create algorithm list, create algorithm
         # synchronisation object
         self.algo = None
         self.algo_list = AlgorithmList()
         self.algo_sync = AlgorithmSync()
+        self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb)
         
     def parse_client_arguments(self):
         # Top level parser
@@ -55,7 +56,7 @@ class MSReactorClient:
         subparsers = parser.add_subparsers(help='available sub-commands:',
                                            dest='command')
                                            
-        algorithm_choices = self.algo_list.get_available_names()
+        algorithm_choices = self.algo_runner.algo_list.get_available_names()
         algo_choice_string = "\n".join(algorithm_choices)
         
         # Parser for sub-command "normal"
@@ -106,39 +107,35 @@ class MSReactorClient:
 
         return parser.parse_args()
         
-    async def instrument_server_manager_cb(self, id, args):
+    def instrument_server_manager_cb(self, id, args = None):
         if (self.inst_serv_man.CallbackIds.SCAN == id):
-            pass
+            self.algo_runner.deliver_scan(args)
         elif (self.inst_serv_man.CallbackIds.FINISHED_ACQUISITION == id):
             self.logger.info('Received finished acquisition message.')
-            self.algo_sync.acq_end.set()
-            self.num_acq_left -= 1
-            if self.num_acq_left != 0:
-                await self.inst_serv_man.start_next_acquisition(num_acq_left)
-            else:
-                async with self.acq_lock:
-                    self.acq_running = False
-                self.listening = False
+            self.algo_runner.acquisition_ended()
         elif (self.inst_serv_man.CallbackIds.ERROR_CB == id):
-            pass
+            self.logger.error(args)
         
-    async def algorithm_runner_cb(self, id, args):
-        if (self.inst_serv_man.CallbackIds.REQUEST_SCAN == id):
+    async def algorithm_runner_cb(self, id, args = None):
+        if (self.algo_runner.CallbackIds.REQUEST_SCAN == id):
             await self.inst_serv_man.request_scan(args)
-        elif (self.inst_serv_man.CallbackIds.FETCH_RECEIVED_SCAN == id):
+        elif (self.algo_runner.CallbackIds.REQUEST_REPEATING_SCAN == id):
             pass
-        elif (self.inst_serv_man.CallbackIds.REQUEST_REPEATING_SCAN == id):
+        elif (self.algo_runner.CallbackIds.CANCEL_REPEATING_SCAN == id):
             pass
-        elif (self.inst_serv_man.CallbackIds.CANCEL_REPEATING_SCAN == id):
-            pass
-        elif (self.inst_serv_man.CallbackIds.REQUEST_ACQUISITION_START == id):
-            pass
-        elif (self.inst_serv_man.CallbackIds.REQUEST_ACQUISITION_STOP == id):
-            pass
-        elif (self.inst_serv_man.CallbackIds.ERROR == id):
-            pass
+        elif (self.algo_runner.CallbackIds.REQUEST_ACQUISITION_START == id):
+            config = {
+            "AcquisitionType": args.name,
+            "AcquisitionParam": args.parameter
+            }
+            await self.inst_serv_man.subscribe_to_scans()
+            await self.inst_serv_man.configure_acquisition(config)
+            await self.inst_serv_man.start_acquisition()
+        elif (self.algo_runner.CallbackIds.REQUEST_ACQUISITION_STOP == id):
+            await self.inst_serv_man.stop_acquisition()
+        elif (self.algo_runner.CallbackIds.ERROR == id):
+            self.logger.error(args)
         
-    
     def init_communication_layer(self):
         self.transport = WebSocketTransport()
         self.protocol = Protocol(self.transport)
@@ -197,6 +194,41 @@ class MSReactorClient:
         else:
             self.logger.error("Connection Failed")
         
+    async def normal_app_refactored(self, loop, args):
+        # Init transport and protocol layer
+        self.init_communication_layer()
+        # Init the instrument server manager
+        self.inst_serv_man = \
+            InstrumentServerManager(self.protocol,
+                                    self.algo_sync,
+                                    None,
+                                    self.instrument_server_manager_cb,
+                                    loop)
+
+        self.logger.info(f'Instrument address: {args.address}')
+        success = await self.inst_serv_man.connect_to_server(args.address)
+        if success:
+            self.logger.info("Successful connection to server!")
+            # Wait a bit after connection
+            await asyncio.sleep(1)
+            
+            loop.create_task(self.inst_serv_man.listen_for_messages())
+            # Select instrument TODO - This should be instrument discovery
+            await self.inst_serv_man.select_instrument(1)
+            
+            # Collect possible parameters for requesting custom scans
+            possible_params = await self.inst_serv_man.get_possible_params()
+            # TODO: Instrument info should be collected and provided to the 
+            #       function later.
+            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                #await asyncio.gather(self.start_instrument(),
+                                     #self.algo_runner.run_algorithm())
+                await self.algo_runner.run_algorithm()
+            else:
+                self.logger.error(f"Failed loading {args.alg}")
+            
+        else:
+            self.logger.error("Connection Failed")
     
     async def mock_app(self, loop, args):
         # Init transport and protocol layer
@@ -288,31 +320,22 @@ class MSReactorClient:
                 self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
                                        None)
             
-            
             algorithm_type = self.algo_list.find_by_name(args.alg)
             if algorithm_type is not None:
                 self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync
-                                                        self.algorithm_runner_cb,
-                                                        self.loop)
                 # Note: args.raw_files were changed to None here.                                         
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
-                                                     
-                    tasks = asyncio.gather(self.start_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
-                    try:
-                        self.loop.run_until_complete(tasks)
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.loop.stop()
+                algo_proc = \
+                    self.loop.run_in_executor(self.executor,
+                                              self.algo.algorithm_body)
+                                                 
+                tasks = asyncio.gather(self.start_instrument(),
+                                       self.inst_serv_man.listen_for_scan_requests(),
+                                       self.algo_runner.run_algorithm())
+                try:
+                    self.loop.run_until_complete(tasks)
+                except Exception as e:
+                    traceback.print_exc()
+                    self.loop.stop()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
@@ -382,7 +405,7 @@ if __name__ == "__main__":
     
     if ('normal' == args.command):
         try:
-            loop.run_until_complete(client.normal_app(loop, args))
+            loop.run_until_complete(client.normal_app_refactored(loop, args))
         except Exception as e:
             traceback.print_exc()
             loop.stop()

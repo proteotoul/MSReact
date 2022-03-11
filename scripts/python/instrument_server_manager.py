@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import multiprocessing
 from enum import Enum
 from multiprocessing import Queue
 from protocol import Protocol
@@ -144,10 +145,11 @@ class InstrumentServerManager:
                 self.resp_cond.notify()
         elif ('EVT' == msg_type):
             if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
-                await self.app_cb(self.CallbackIds.ACQUISITION_FINISHED_CB, 
-                                  None)
+                self.logger.info('Finish message received in instrument server manager')
+                self.app_cb(self.CallbackIds.ACQUISITION_FINISHED, None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
-                self.algo_sync.rec_scan_queue.put(payload)
+                self.logger.info('Scan received in instrument server manager')
+                self.app_cb(self.CallbackIds.SCAN, payload)
         else:
             pass
             
@@ -167,9 +169,9 @@ class InstrumentServerManager:
         if expected_rsp is not None:
             received_rsp, payload = await self.wait_for_response()
             if (received_rsp != expected_rsp):
-                error_msg = f'Problem with sending message: {msg.name}. ' +
+                error_msg = (f'Problem with sending message: {msg.name}. ' +
                             f'Expected response: {excpected_rsp.name}, ' +
-                            f'received response: {received_rsp.name}.'
+                            f'received response: {received_rsp.name}.')
                 self.logger.error(error_msg)
                 raise Exception(error_msg)
         return payload

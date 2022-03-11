@@ -57,13 +57,12 @@ class Algorithm:
         acquisition_finished    = 2
     
     def __init__(self):
-        self.acquisition_method = DEFAULT_ACQUISITION_METHOD
-        self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_method = self.ACQUISITION_METHOD
+        self.acquisition_sequence = self.ACQUISITION_SEQUENCE
         
     def configure_algorithm(self, 
-                            fetch_received_scan, 
-                            request_scan,
-                            start_acquisition):
+                            runner_cb,
+                            command_ids):
         """
         Parameters
         ----------
@@ -71,10 +70,27 @@ class Algorithm:
             A function that the algorithm can call when it would like to 
             request a custom scan
         """
-        self.fetch_received_scan = fetch_received_scan
-        self.request_scan = request_scan
-        self.start_acquisition = start_acquisition
-        self.finish_algo = finish_algo
+        #self.fetch_received_scan = fetch_received_scan
+        #self.request_scan = request_scan
+        #self.start_acquisition = start_acquisition
+        #self.finish_algo = finish_algo
+        self.runner_cb = runner_cb
+        self.command_ids = command_ids
+        
+    def fetch_received_scan(self):
+        return self.runner_cb(self.command_ids.FETCH_RECEIVED_SCAN, None)
+        
+    def request_custom_scan(self, request):
+        self.runner_cb(self.command_ids.REQUEST_SCAN, request)
+        
+    def request_repeating_scan(self, request):
+        self.runner_cb(self.command_ids.REQUEST_REPEATING_SCAN, request)
+        
+    def cancel_repeating_scan(self, request):
+        self.runner_cb(self.command_ids.CANCEL_REPEATING_SCAN, request)
+        
+    def signal_error_to_runner(self, error_msg):
+        self.runner_cb(self.command_ids.ERROR, error_msg)
         
     def validate_methods_and_sequence(self, methods, sequence):
         """

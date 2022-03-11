@@ -14,7 +14,9 @@ class MockServerManager(InstrumentServerManager):
     def __init__(self, 
                  protocol,
                  algo_sync,
-                 acq_cont):
+                 acq_cont,
+                 app_cb,
+                 loop):
         self.raw_file_list = None
         self.scan_interval = None
         super().__init__(protocol, algo_sync, acq_cont)

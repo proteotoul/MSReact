@@ -60,6 +60,7 @@ class ListenTestAlgorithm(Algorithm):
     TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     def __init__(self):
+        super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
         self.acquisition_sequence = \
             [
@@ -71,21 +72,6 @@ class ListenTestAlgorithm(Algorithm):
                             post_acquisition = self.intra_acquisition)
             ]
         self.logger = logging.getLogger(__name__)
-        
-    def configure_algorithm(self, 
-                            fetch_received_scan, 
-                            request_scan,
-                            start_acquisition):
-        """
-        Parameters
-        ----------
-        scan_req_act : function
-            A function that the algorithm can call when it would like to 
-            request a custom scan
-        """
-        self.fetch_received_scan = fetch_received_scan
-        self.request_scan = request_scan
-        self.start_acquisition = start_acquisition
         
     def validate_methods_and_sequence(self, methods, sequence):
         """
@@ -129,20 +115,19 @@ class ListenTestAlgorithm(Algorithm):
         self.logger.info('Executing pre-acquisition steps.')
         self.fp = open('FusionTrial.json', 'w')
         
-    def intra_acquisition(self):
+    def intra_acquisition(self, acq_finished):
         self.logger.info('Executing intra-acquisition steps.')
-        while True:
-            status, scan = self.fetch_received_scan()
-            if (self.AcquisitionStatus.acquisition_finished == status):
-                break
-            elif (self.AcquisitionStatus.scan_available == status):
+        while not acq_finished():
+            scan = self.fetch_received_scan()
+            if scan is not None:
                 try:
+                    self.logger.info('Fetched scan in algorithm')
                     json.dump(scan, self.fp, indent=2, sort_keys=True)
                 except Exception as e:
                     self.logger.error(e)
             else:
-                # No scan was available
                 pass
+        self.logger.info('FFinishing intra acquisition.')
     
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
