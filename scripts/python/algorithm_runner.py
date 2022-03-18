@@ -9,6 +9,7 @@ import multiprocessing.managers as m
 import threading
 import logging
 from queue import Empty, Full
+from acquisition import AcqMsgIDs, acquisition_process
 import traceback
 
 import dill
@@ -107,41 +108,10 @@ class AlgorithmRunner:
         self.logger = logging.getLogger(__name__)
         
         self.executor = ProcessPoolExecutor(max_workers=3)
-
-
-    def algorithm_cb(self, cb_id, args):
-        response = None
-        cb_id = self.CallbackIds(cb_id.value)
-        if cb_id == self.CallbackIds.FETCH_RECEIVED_SCAN:
-            try:
-                response = self.rec_scan_queue.get_nowait()
-                self.logger.info('Scan was not empty')
-            except Empty:
-                pass
-        elif ((cb_id == self.CallbackIds.REQUEST_SCAN) or
-              (cb_id == self.CallbackIds.REQUEST_REPEATING_SCAN)or
-              (cb_id == self.CallbackIds.CANCEL_REPEATING_SCAN) or 
-              (cb_id == self.CallbackIds.ERROR)):
-              self.post_request(cb_id, args)
-        return response
         
-    def config_algo(self):
-        callback_id_subsets = \
-            Enum("CallbackIdSubset",
-                 [(a.name, a.value) for a in self.CallbackIds if a.value < 6 ])
-        self.algorithm.configure_algorithm(self.algorithm_cb, callback_id_subsets)
         
-    def configure_algorithm(self, methods,
-                            sequence, rx_scan_format,
-                            req_scan_format):
-        self.algorithm.configure_algorithm(self.get_scan,
-                                           self.request_scan,
-                                           self.start_acquisition)
-        success = \
-            self.algorithm.validate_scan_formats(rx_scan_format, req_scan_format)
-        success = \
-            self.algorithm.validate_methods_and_sequence(methods, sequence)
-        return success
+        self.acq_in_q = multiprocessing.Manager().Queue()
+        self.acq_out_q = multiprocessing.Manager().Queue()
         
     def select_algorithm(self, algorithm, instrument_info):
         self.logger.info(f'Selecting algorithm {algorithm}')
@@ -149,13 +119,9 @@ class AlgorithmRunner:
         selected_algorithm = self.algo_list.find_by_name(algorithm)
 
         if selected_algorithm is not None:
-            # Register the specific algorithm class on the manager
-            MyManager.register("Algorithm", selected_algorithm)
-            self.manager = MyManager()
             
-            #self.algorithm = selected_algorithm()
-            self.algorithm = self.manager.Algorithm()
-            self.config_algo()
+            self.algorithm = selected_algorithm()
+            
             for acquisition in selected_algorithm.ACQUISITION_SEQUENCE:
                 if instrument_info != acquisition.instrument.instrument_name:
                     success = False
@@ -168,21 +134,17 @@ class AlgorithmRunner:
         return success
         
     def acquisition_ended(self):
-        self.acq_end_external.set()
+        self.acq_in_q.put((AcqMsgIDs.ACQUISITION_ENDED, None))
+        #self.logger.info(f'Acquisition ended. Queue size: {self.acq_in_q.qsize()}')
         
     def deliver_scan(self, scan):
-        self.rec_scan_queue.put(scan)
-        self.logger.info(f'Received scan. Queue size: {self.rec_scan_queue.qsize()}')
+        #self.logger.info(f'Received scan. Queue size: {self.acq_in_q.qsize()}')
+        self.acq_in_q.put((AcqMsgIDs.SCAN, scan))
+        #self.logger.info(f'Received scan. Queue size: {self.acq_in_q.qsize()}')
     
     def instrument_error(self):
-        self.acq_end_external.set()
-        
-    def get_algorithm_process(self):
-        loop = asyncio.get_event_loop()
-        executor = ProcessPoolExecutor()
-        self.algorithm_process = \
-            loop.run_in_executor(executor, self.algorithm.algorithm_body)
-        return self.algorithm_process
+        self.acq_in_q.put((AcqMsgIDs.ERROR, None))
+        #self.logger.info(f'Error indication received from instrument side. Queue size: {self.acq_in_q.qsize()}')
         
     def request_scan(self, request):
         self.post_request(self.CallbackIds.REQUEST_ACQUISITION_START, None)
@@ -227,8 +189,12 @@ class AlgorithmRunner:
         for acquisition in self.algorithm.acquisition_sequence:
             self.logger.info(f'Running acquisition sequence: {i}')
             self.current_acq = acquisition
-            await loop.run_in_executor(None,
-                                       algorithm_process, acquisition, self.req_queue)
+            await loop.run_in_executor(self.executor,
+                                       acquisition_process, 
+                                       acquisition.__module__,
+                                       acquisition.__name__,
+                                       self.acq_in_q, 
+                                       self.acq_out_q)
             #await self.piclke_this_if_you_can(acquisition, loop)
         self.logger.info(f'Algorithm execution ended.')
                                        
@@ -238,7 +204,7 @@ class AlgorithmRunner:
             while not self.acq_end_external.is_set():
                 #self.logger.info(f'Try to get request.')
                 try:
-                    request, args = self.req_queue.get_nowait()
+                    request, args = self.acq_out_q.get_nowait()
                     self.logger.info(f'Got request from algorithm: {request}')
                     await self.app_cb(request, args)
                 except Empty:

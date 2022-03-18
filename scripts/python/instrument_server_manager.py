@@ -146,9 +146,9 @@ class InstrumentServerManager:
         elif ('EVT' == msg_type):
             if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
                 self.logger.info('Finish message received in instrument server manager')
-                self.app_cb(self.CallbackIds.ACQUISITION_FINISHED, None)
+                self.app_cb(self.CallbackIds.FINISHED_ACQUISITION, None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
-                self.logger.info('Scan received in instrument server manager')
+                #self.logger.info('Scan received in instrument server manager')
                 self.app_cb(self.CallbackIds.SCAN, payload)
         else:
             pass

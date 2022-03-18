@@ -14,9 +14,8 @@ from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
 import sys
-#from algorithm_runner import CallbackIds
 
-class CallbackIds(Enum):
+class AcqMsgIDs(Enum):
     SCAN = 1
     REQUEST_SCAN = 2
     FETCH_RECEIVED_SCAN = 3
@@ -47,6 +46,8 @@ class Acquisition:
         self.instrument = MassSpectrometerInstrument()
         self.acquisition_workflow = aw.AcquisitionWorkflow(),
         self.acquisition_finished = threading.Event()
+        with open("log_conf.json", "r", encoding="utf-8") as fd:
+            logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
         self.scan_queue = queue.Queue()
         self.queue_in = queue_in
@@ -79,26 +80,27 @@ class Acquisition:
     def fetch_received_scan(self):
         scan = None
         try:
-            scan = self.queue_in.get_nowait()
-        except Empty:
+            scan = self.scan_queue.get_nowait()
+        except queue.Empty:
             pass
         return scan
         
     def start_acquisition(self):
         # if it's listening workflow, then this should do nothing
-        self.queue_out.put((CallbackIds.REQUEST_ACQUISITION_START, None))
+        self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_START,
+                            self.acquisition_workflow))
         
     def request_custom_scan(self, request):
-        self.queue_out.put((CallbackIds.REQUEST_SCAN, request))
+        self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
         
     def request_repeating_scan(self, request):
-        self.queue_out.put((CallbackIds.REQUEST_REPEATING_SCAN, request))
+        self.queue_out.put((AcqMsgIDs.REQUEST_REPEATING_SCAN, request))
         
     def cancel_repeating_scan(self, request):
-        self.queue_out.put((CallbackIds.CANCEL_REPEATING_SCAN, request))
+        self.queue_out.put((AcqMsgIDs.CANCEL_REPEATING_SCAN, request))
         
     def signal_error_to_runner(self, error_msg):
-        self.queue_out.put((CallbackIds.ERROR, error_msg))
+        self.queue_out.put((AcqMsgIDs.ERROR, error_msg))
         
     def get_acquisition_status(self):
         with self.status_lock:
@@ -111,15 +113,21 @@ class Acquisition:
         
     def wait_for_end_or_error(self):
         while True:
-            cmd, payload = self.queue_in.get()
-            if CallbackIds.SCAN == cmd:
+            try:
+                cmd, payload = self.queue_in.get_nowait()
+            except queue.Empty:
+                time.sleep(0.1)
+                continue
+            if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
-            elif CallbackIds.ACQUISITION_ENDED == cmd:
+            elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
                 self.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_ENDED_NORMAL)
                 break
-            elif CallbackIds.ERROR == cmd:
+            elif AcqMsgIDs.ERROR == cmd:
                 self.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_ENDED_ERROR)
                 break
+            else:
+                pass
         
     @abstractmethod
     def pre_acquisition(self):
@@ -199,7 +207,7 @@ async def test_stop_acq(queue_in):
     for i in range(5):
         await asyncio.sleep(1)
         print(f"Cycle {i} is done")
-    queue_in.put((CallbackIds.ACQUISITION_ENDED, None))
+    queue_in.put((AcqMsgIDs.ACQUISITION_ENDED, None))
     
 
 if __name__ == "__main__":

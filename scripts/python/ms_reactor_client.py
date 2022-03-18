@@ -21,6 +21,7 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import ThreadPoolExecutor
 from acquisition_manager import AcquisitionManager
 from mock_acquisition_manager import MockAcquisitionManager
+from acquisition import AcqMsgIDs
 
 # For testing only
 from listen_test_algo import ListenTestAlgorithm
@@ -122,13 +123,13 @@ class MSReactorClient:
             self.logger.error(args)
         
     async def algorithm_runner_cb(self, id, args = None):
-        if (self.algo_runner.CallbackIds.REQUEST_SCAN == id):
+        if (AcqMsgIDs.REQUEST_SCAN == id):
             await self.inst_serv_man.request_scan(args)
-        elif (self.algo_runner.CallbackIds.REQUEST_REPEATING_SCAN == id):
+        elif (AcqMsgIDs.REQUEST_REPEATING_SCAN == id):
             pass
-        elif (self.algo_runner.CallbackIds.CANCEL_REPEATING_SCAN == id):
+        elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == id):
             pass
-        elif (self.algo_runner.CallbackIds.REQUEST_ACQUISITION_START == id):
+        elif (AcqMsgIDs.REQUEST_ACQUISITION_START == id):
             config = {
             "AcquisitionType": args.name,
             "AcquisitionParam": args.parameter
@@ -136,9 +137,9 @@ class MSReactorClient:
             await self.inst_serv_man.subscribe_to_scans()
             await self.inst_serv_man.configure_acquisition(config)
             await self.inst_serv_man.start_acquisition()
-        elif (self.algo_runner.CallbackIds.REQUEST_ACQUISITION_STOP == id):
+        elif (AcqMsgIDs.REQUEST_ACQUISITION_STOP == id):
             await self.inst_serv_man.stop_acquisition()
-        elif (self.algo_runner.CallbackIds.ERROR == id):
+        elif (AcqMsgIDs.ERROR == id):
             self.logger.error(args)
         
     def init_communication_layer(self):
@@ -184,15 +185,13 @@ class MSReactorClient:
                                                         self.algo_sync,
                                                         self.algorithm_runner_cb,
                                                         self.loop)
-                # Note: args.raw_files were changed to None here.
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = loop.run_in_executor(self.executor,
-                                                     self.algo.algorithm_body)
-                                                     
-                    await asyncio.gather(self.start_instrument(),
-                                         self.inst_serv_man.listen_for_scan_requests(),
-                                         algo_proc)
+                
+                algo_proc = loop.run_in_executor(self.executor,
+                                                 self.algo.algorithm_body)
+                                                 
+                await asyncio.gather(self.start_instrument(),
+                                     self.inst_serv_man.listen_for_scan_requests(),
+                                     algo_proc)
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
@@ -274,21 +273,19 @@ class MSReactorClient:
                                                         self.algo_sync,
                                                         self.algorithm_runner_cb,
                                                         self.loop)
-                # Note: args.raw_files were changed to None here.                                       
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
-                    
-                    try:
-                        await asyncio.gather(self.start_mock_instrument(),
-                                             self.inst_serv_man.listen_for_scan_requests(),
-                                             algo_proc)
-                        await self.inst_serv_man.request_shut_down_server()
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.inst_serv_man.terminate_mock_server()
+
+                algo_proc = \
+                    self.loop.run_in_executor(self.executor,
+                                              self.algo.algorithm_body)
+                
+                try:
+                    await asyncio.gather(self.start_mock_instrument(),
+                                         self.inst_serv_man.listen_for_scan_requests(),
+                                         algo_proc)
+                    await self.inst_serv_man.request_shut_down_server()
+                except Exception as e:
+                    traceback.print_exc()
+                    self.inst_serv_man.terminate_mock_server()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
@@ -324,8 +321,6 @@ class MSReactorClient:
             
             callback_id_subsets = \
                 Enum("CallbackIdSubset", [(a.name, a.value) for a in self.algo_runner.CallbackIds if a.value < 6 ])
-            listen_test.configure_algorithm(self.test_algo_cb,
-                                            callback_id_subsets)
                                             
             await loop.run_in_executor(self.executor,
                                        self.algo.algorithm_body)
