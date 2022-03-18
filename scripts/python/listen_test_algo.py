@@ -7,6 +7,35 @@ import logging
 import time
 import csv
 
+class ListenTestAcquisition(Acquisition):
+    def __init__(self):
+        super().__init__()
+        self.name = 'Listen_test_algo_first_acquisition'
+        self.instrument = ThermoTribidInstrument()
+        self.acquisition_workflow = aw.Listening()
+        
+    def pre_acquisition(self):
+        self.logger.info('Executing pre-acquisition steps.')
+        self.fp = open('FusionTrial.json', 'w')
+        
+    def intra_acquisition(self):
+        self.logger.info('Executing intra-acquisition steps.')
+        while not self.is_acquisition_ended():
+            scan = self.fetch_received_scan()
+            if scan is not None:
+                try:
+                    self.logger.info('Fetched scan in algorithm')
+                    json.dump(scan, self.fp, indent=2, sort_keys=True)
+                except Exception as e:
+                    self.logger.error(e)
+            else:
+                pass
+        self.logger.info('Finishing intra acquisition.')
+    
+    def post_acquisition(self):
+        self.logger.info('Executing post-acquisition steps.')
+        self.fp.close()
+
 class ListenTestAlgorithm(Algorithm):
     """
     Algorithm testing the listening functionality of the client
@@ -62,15 +91,15 @@ class ListenTestAlgorithm(Algorithm):
     def __init__(self):
         super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = \
-            [
+        self.acquisition_sequence = [ ListenTestAcquisition ]
+            '''[
                 Acquisition(name = 'Listen_test_algo_first_acquisition',
                             instrument = ThermoTribidInstrument(),
                             acquisition_workflow = aw.Listening(),
                             pre_acquisition = self.pre_acquisition,
                             intra_acquisition = self.intra_acquisition,
                             post_acquisition = self.intra_acquisition)
-            ]
+            ]'''
         self.logger = logging.getLogger(__name__)
         
     def validate_methods_and_sequence(self, methods, sequence):
@@ -110,14 +139,14 @@ class ListenTestAlgorithm(Algorithm):
         self.received_scan_format = rx_scan_format
         self.requested_scan_format = req_scan_format
         return success
-    
+    '''
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
         self.fp = open('FusionTrial.json', 'w')
         
-    def intra_acquisition(self, acq_finished):
+    def intra_acquisition(self):
         self.logger.info('Executing intra-acquisition steps.')
-        while not acq_finished():
+        while not self.is_acquisition_ended():
             scan = self.fetch_received_scan()
             if scan is not None:
                 try:
@@ -131,6 +160,7 @@ class ListenTestAlgorithm(Algorithm):
     
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
+    '''
     
     def algorithm_body(self):
         # This is temporary until the handling of sequence and methods are figured out

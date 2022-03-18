@@ -18,8 +18,13 @@ from algorithm_list import AlgorithmList
 from mock_server_manager import MockServerManager
 from instrument_server_manager import InstrumentServerManager
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from acquisition_manager import AcquisitionManager
 from mock_acquisition_manager import MockAcquisitionManager
+
+# For testing only
+from listen_test_algo import ListenTestAlgorithm
+from request_test_algo import RequestTestAlgorithm
 
 VERSION = 'v0.1'
 
@@ -96,10 +101,10 @@ class MSReactorClient:
             subparsers.add_parser('test',
                                   help='command to use for testing')
                                   
-        parser_test.add_argument('alg', choices = algorithm_choices,
-                                 metavar = 'algorithm', default = 'monitor',
-                                 help=f'algorithm to use during the acquisition, \
-                                 choices: {", ".join(algorithm_choices)}')
+        #parser_test.add_argument('alg', choices = algorithm_choices,
+        #                         metavar = 'algorithm', default = 'monitor',
+        #                         help=f'algorithm to use during the acquisition, \
+        #                         choices: {", ".join(algorithm_choices)}')
         # TODO - This won't be an input, but will be retreived from 
         # the middleware
         parser_test.add_argument('address',
@@ -290,57 +295,55 @@ class MSReactorClient:
         else:
             self.logger.error("Connection Failed")
             
-    def test_app(self, args):
+    async def test_app(self, args):
         # Init transport and protocol layer
         self.init_communication_layer()
-        
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
-        
-        # Init the Instrument controller
-        self.inst_serv_man = InstrumentServerManager(self.protocol,
-                                                     self.algo_sync,
-                                                     self.acq_man)
-        # Create URI for connection. TODO: should only address be given and 
-        # the URI generated within the transport layer?
+        # Init the instrument server manager
+        self.inst_serv_man = \
+            InstrumentServerManager(self.protocol,
+                                    self.algo_sync,
+                                    None,
+                                    self.instrument_server_manager_cb,
+                                    loop)
+
         self.logger.info(f'Instrument address: {args.address}')
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server, 
-                                  (args.address,)):
+        success = await self.inst_serv_man.connect_to_server(args.address)
+        if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
-            time.sleep(1)
+            await asyncio.sleep(1)
             
+            loop.create_task(self.inst_serv_man.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
+            await self.inst_serv_man.select_instrument(1)
             
             # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
+            possible_params = await self.inst_serv_man.get_possible_params()
             
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                # Note: args.raw_files were changed to None here.                                         
-                algo_proc = \
-                    self.loop.run_in_executor(self.executor,
-                                              self.algo.algorithm_body)
-                                                 
-                tasks = asyncio.gather(self.start_instrument(),
-                                       self.inst_serv_man.listen_for_scan_requests(),
-                                       self.algo_runner.run_algorithm())
-                try:
-                    self.loop.run_until_complete(tasks)
-                except Exception as e:
-                    traceback.print_exc()
-                    self.loop.stop()
-            else:
-                self.logger.error(f"Failed loading {args.alg}")
+            listen_test = ListenTestAlgorithm()
+            
+            callback_id_subsets = \
+                Enum("CallbackIdSubset", [(a.name, a.value) for a in self.algo_runner.CallbackIds if a.value < 6 ])
+            listen_test.configure_algorithm(self.test_algo_cb,
+                                            callback_id_subsets)
+                                            
+            await loop.run_in_executor(self.executor,
+                                       self.algo.algorithm_body)
+            
+            # TODO: Instrument info should be collected and provided to the 
+            #       function later.
+            #if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                #await asyncio.gather(self.start_instrument(),
+                                     #self.algo_runner.run_algorithm())
+            #    await self.algo_runner.run_algorithm()
+            #else:
+            #    self.logger.error(f"Failed loading {args.alg}")
             
         else:
             self.logger.error("Connection Failed")
+        
+    def test_algo_cb(self):
+        pass
         
     async def start_mock_instrument(self):
         await self.inst_serv_man.subscribe_to_scans()

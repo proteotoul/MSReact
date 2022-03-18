@@ -1,4 +1,5 @@
 import enum
+import threading
 
 class Algorithm:
     '''
@@ -36,7 +37,7 @@ class Algorithm:
     '''
 
     '''Method - TODO: Create default method based on real method.'''
-    ACQUISITION_METHOD = {}   
+    ACQUISITION_METHOD = {}
     '''Sequence - List of Acquisitions'''
     ACQUISITION_SEQUENCE = []
     '''Cycle interval - TODO: This is only for mock.'''
@@ -59,6 +60,7 @@ class Algorithm:
     def __init__(self):
         self.acquisition_method = self.ACQUISITION_METHOD
         self.acquisition_sequence = self.ACQUISITION_SEQUENCE
+        self.current_acquisition = None
         
     def configure_algorithm(self, 
                             runner_cb,
@@ -77,6 +79,9 @@ class Algorithm:
         self.runner_cb = runner_cb
         self.command_ids = command_ids
         
+    def set_current_acquisition(self, acquisition):
+        self.current_acquisition = acquisition
+        
     def fetch_received_scan(self):
         return self.runner_cb(self.command_ids.FETCH_RECEIVED_SCAN, None)
         
@@ -91,6 +96,9 @@ class Algorithm:
         
     def signal_error_to_runner(self, error_msg):
         self.runner_cb(self.command_ids.ERROR, error_msg)
+        
+    def is_acquisition_ended(self):
+        return self.current_acquisition.acquisition_finished.is_set()
         
     def validate_methods_and_sequence(self, methods, sequence):
         """
