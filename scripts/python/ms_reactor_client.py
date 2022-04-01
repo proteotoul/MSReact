@@ -149,58 +149,6 @@ class MSReactorClient:
     async def normal_app(self, loop, args):
         # Init transport and protocol layer
         self.init_communication_layer()
-        
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
-        
-        # Init the instrument server manager
-        self.inst_serv_man = \
-            InstrumentServerManager(self.protocol,
-                                    self.algo_sync,
-                                    self.acq_man,
-                                    self.instrument_server_manager_cb)
-
-        self.logger.info(f'Instrument address: {args.address}')
-        success = await self.inst_serv_man.connect_to_server(args.address)
-        if success:
-            self.logger.info("Successful connection to server!")
-            # Wait a bit after connection
-            await asyncio.sleep(1)
-            
-            loop.create_task(self.inst_serv_man.listen_for_messages())
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_serv_man.select_instrument(1)
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = await self.inst_serv_man.get_possible_params()
-            
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync,
-                                                        self.algorithm_runner_cb,
-                                                        self.loop)
-                
-                algo_proc = loop.run_in_executor(self.executor,
-                                                 self.algo.algorithm_body)
-                                                 
-                await asyncio.gather(self.start_instrument(),
-                                     self.inst_serv_man.listen_for_scan_requests(),
-                                     algo_proc)
-            else:
-                self.logger.error(f"Failed loading {args.alg}")
-            
-        else:
-            self.logger.error("Connection Failed")
-        
-    async def normal_app_refactored(self, loop, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
         # Init the instrument server manager
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
@@ -225,8 +173,6 @@ class MSReactorClient:
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_runner.select_algorithm(args.alg, "Tribid"):
-                #await asyncio.gather(self.start_instrument(),
-                                     #self.algo_runner.run_algorithm())
                 await self.algo_runner.run_algorithm()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
@@ -403,7 +349,7 @@ if __name__ == "__main__":
     
     if ('normal' == args.command):
         try:
-            loop.run_until_complete(client.normal_app_refactored(loop, args))
+            loop.run_until_complete(client.normal_app(loop, args))
         except Exception as e:
             traceback.print_exc()
             loop.stop()

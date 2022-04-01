@@ -25,7 +25,6 @@ class ListenTestAcquisition(Acquisition):
             scan = self.fetch_received_scan()
             if scan is not None:
                 try:
-                    self.logger.info('Fetched scan in algorithm')
                     json.dump(scan, self.fp, indent=2, sort_keys=True)
                 except Exception as e:
                     self.logger.error(e)
@@ -93,38 +92,8 @@ class ListenTestAlgorithm(Algorithm):
         super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
         self.acquisition_sequence = [ ListenTestAcquisition ]
-        '''[
-            Acquisition(name = 'Listen_test_algo_first_acquisition',
-                        instrument = ThermoTribidInstrument(),
-                        acquisition_workflow = aw.Listening(),
-                        pre_acquisition = self.pre_acquisition,
-                        intra_acquisition = self.intra_acquisition,
-                        post_acquisition = self.intra_acquisition)
-        ]'''
         self.logger = logging.getLogger(__name__)
         
-    '''
-    def pre_acquisition(self):
-        self.logger.info('Executing pre-acquisition steps.')
-        self.fp = open('FusionTrial.json', 'w')
-        
-    def intra_acquisition(self):
-        self.logger.info('Executing intra-acquisition steps.')
-        while not self.is_acquisition_ended():
-            scan = self.fetch_received_scan()
-            if scan is not None:
-                try:
-                    self.logger.info('Fetched scan in algorithm')
-                    json.dump(scan, self.fp, indent=2, sort_keys=True)
-                except Exception as e:
-                    self.logger.error(e)
-            else:
-                pass
-        self.logger.info('FFinishing intra acquisition.')
-    
-    def post_acquisition(self):
-        self.logger.info('Executing post-acquisition steps.')
-    '''
     
     def algorithm_body(self):
         # This is temporary until the handling of sequence and methods are figured out

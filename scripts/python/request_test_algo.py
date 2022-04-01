@@ -1,6 +1,34 @@
 from algorithm import Algorithm
+from acquisition import Acquisition, AcquisitionStatusIds
+from tribid_instrument import ThermoTribidInstrument
+import acquisition_workflow as aw
 import logging
 import time
+
+class RequestTestAcquisition(Acquisition):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.name = 'Request_test_algo_first_acquisition'
+        self.instrument = ThermoTribidInstrument()
+        self.acquisition_workflow = aw.Listening()
+        self.logger = logging.getLogger(__name__)
+        
+    def pre_acquisition(self):
+        self.logger.info('Executing pre-acquisition steps.')
+        
+    def intra_acquisition(self):
+        self.logger.info('Executing intra-acquisition steps.')
+        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
+            scan = self.fetch_received_scan()
+            if ((scan is not None) and (2 == scan["MSScanLevel"])):
+                time.sleep(0.4)
+                self.request_custom_scan({"Precursor_mz": str(scan["PrecursorMass"])})
+            else:
+                pass
+        self.logger.info('Finishing intra acquisition.')
+    
+    def post_acquisition(self):
+        self.logger.info('Executing post-acquisition steps.')
 
 class RequestTestAlgorithm(Algorithm):
     """
@@ -55,8 +83,9 @@ class RequestTestAlgorithm(Algorithm):
     TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     def __init__(self):
+        super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_sequence = [ RequestTestAcquisition ]
         self.logger = logging.getLogger(__name__)
     
         
