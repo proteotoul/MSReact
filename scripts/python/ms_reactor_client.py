@@ -152,8 +152,6 @@ class MSReactorClient:
         # Init the instrument server manager
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
-                                    self.algo_sync,
-                                    None,
                                     self.instrument_server_manager_cb,
                                     loop)
 
@@ -184,20 +182,16 @@ class MSReactorClient:
         # Init transport and protocol layer
         self.init_communication_layer()
         
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
-        
         # Init the mock instrument server manager
         self.inst_serv_man = MockServerManager(self.protocol,
-                                               self.algo_sync,
-                                               self.acq_man)
+                                               self.instrument_server_manager_cb,
+                                               loop)
                                                
         self.inst_serv_man.create_mock_server(args.raw_files,
                                               args.scan_interval)
 
         success = await self.inst_serv_man.connect_to_server()
+        
         if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
@@ -210,31 +204,15 @@ class MSReactorClient:
             # Collect possible parameters for requesting custom scans
             possible_params = await self.inst_serv_man.get_possible_params()
             
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync,
-                                                        self.algorithm_runner_cb,
-                                                        self.loop)
-
-                algo_proc = \
-                    self.loop.run_in_executor(self.executor,
-                                              self.algo.algorithm_body)
-                
-                try:
-                    await asyncio.gather(self.start_mock_instrument(),
-                                         self.inst_serv_man.listen_for_scan_requests(),
-                                         algo_proc)
-                    await self.inst_serv_man.request_shut_down_server()
-                except Exception as e:
-                    traceback.print_exc()
-                    self.inst_serv_man.terminate_mock_server()
+            #self.inst_serv_man.set_ms_scan_tx_level
+            # TODO: Instrument info should be collected and provided to the 
+            #       function later.
+            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                await self.algo_runner.run_algorithm()
+                await self.inst_serv_man.request_shut_down_server()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
-            
+                self.inst_serv_man.terminate_mock_server()
         else:
             self.logger.error("Connection Failed")
             
@@ -290,29 +268,6 @@ class MSReactorClient:
         await self.inst_serv_man.subscribe_to_scans()
         await self.inst_serv_man.set_ms_scan_tx_level(self.algo.TRANSMITTED_SCAN_LEVEL)
         await self. inst_serv_man.prepare_acquisition()
-        
-    async def start_instrument(self):
-        config = {
-            "AcquisitionType": "Method",
-            "AcquisitionParam": "default.meth"
-        }
-        '''
-        config = {
-            "AcquisitionType": "LimitedByTime",
-            "AcquisitionParam": "5"
-        }'''
-        
-        await self.inst_serv_man.subscribe_to_scans()
-        await self.inst_serv_man.configure_acquisition(config)
-        await self. inst_serv_man.prepare_acquisition()
-        
-    def run_async_as_sync(self, coroutine, args):
-        loop = self.loop
-        if args is not None:
-            result = loop.run_until_complete(coroutine(*args))
-        else:
-            result = loop.run_until_complete(coroutine())
-        return result
         
     def custom_exception_handler(loop, context):
         # first, handle with default handler

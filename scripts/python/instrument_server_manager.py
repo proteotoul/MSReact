@@ -18,10 +18,8 @@ class InstrumentServerManager:
         FINISHED_ACQUISITION = 2
         ERROR = 3
     
-    def __init__(self, protocol, algo_sync, acq_cont, app_cb, loop):
+    def __init__(self, protocol, app_cb, loop):
         self.proto = protocol
-        self.algo_sync = algo_sync
-        self.acq_cont = acq_cont
         self.address = None
         self.acq_running = False
         self.acq_lock = asyncio.Lock()
@@ -155,14 +153,6 @@ class InstrumentServerManager:
             
             # That is an error situation
     
-    async def listen_for_message_requests(self):
-        self.listening_req = True
-        self.logger.info('Listening for message requests started')
-        while self.listening_req:
-            msg, exp_rsp = \
-                await self.loop.run_in_executor(None, self.msg_req_queue.get())
-            rsp_payload = await self.submit_message(msg, exp_rsp)
-    
     async def submit_message(self, msg, expected_rsp):
         payload = None
         await self.proto.send_message(msg)
@@ -180,12 +170,6 @@ class InstrumentServerManager:
         # Do all actions related to acquisition finishing
         pass
         
-    async def prepare_acquisition(self):
-        async with self.acq_lock:
-            self.acq_running = True
-        self.num_acq_left = self.acq_cont.num_acq
-        await self.start_next_acquisition(self.num_acq_left)
-        
     async def wait_for_response(self):
         async with self.resp_cond:
             await self.resp_cond.wait()
@@ -193,41 +177,4 @@ class InstrumentServerManager:
             self.resp = None
         self.logger.info(f'Response: {received_resp.name}')
         return received_resp, resp_payload
-                
-    async def listen_for_scan_requests(self):
-        self.logger.info('Start listening for scan requests')
-        sleep = True
-        acq_running = True
-        async with self.acq_lock:
-            self.acq_running = True
-        while acq_running or not self.algo_sync.scan_req_queue.empty():
-            if sleep:
-                await asyncio.sleep(0.05)
-            try:
-                request = self.algo_sync.scan_req_queue.get_nowait()
-                await self.request_scan(request)
-                sleep = False
-            except Empty:
-                sleep = True
-                
-            async with self.acq_lock:
-                acq_running = self.acq_running
-        self.logger.info(f'Exited listening for requests loop')
-        
-    def run_async_as_sync(self, coroutine):
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(coroutine())
-        return result
-        
-    async def wait_for_acquisition_start(self):
-        self.logger.info('Waiting for acquisition to start...')
-        is_set = False
-        while (not is_set):
-            is_set = self.algo_sync.move_to_next_acq.is_set()
-            await asyncio.sleep(0.05)
-        self.algo_sync.move_to_next_acq.clear()
-        
-    async def start_next_acquisition(self, num_acq_left):
-        if 0 != num_acq_left:
-            await self.wait_for_acquisition_start()
-            await self.start_acquisition()
+   

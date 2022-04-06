@@ -7,19 +7,17 @@ from instrument_server_manager import InstrumentServerManager
 
 class MockServerManager(InstrumentServerManager):
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
-    DEFAULT_RAW_FILE_LIST = ["D:\\dev\\thermo-mock\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
+    DEFAULT_RAW_FILE_LIST = ["D:\\dev\\ms-reactor\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
     DEFAULT_SCAN_INTERVAL = 1
-    MOCK_SERVER_PATH = ['D:\\dev\\thermo-mock\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ']
+    MOCK_SERVER_PATH = ['D:\\dev\\ms-reactor\\ThermoMock\\ThermoMock\\bin\\Debug\\net5.0\\ThermoMock.exe ']
 
     def __init__(self, 
                  protocol,
-                 algo_sync,
-                 acq_cont,
                  app_cb,
                  loop):
         self.raw_file_list = None
         self.scan_interval = None
-        super().__init__(protocol, algo_sync, acq_cont)
+        super().__init__(protocol, app_cb, loop)
         self.logger = logging.getLogger(__name__)
         # Continue updating MockServerManager so it is implementing a full
         # instrument controller too
@@ -47,8 +45,8 @@ class MockServerManager(InstrumentServerManager):
             self.mock_proc.terminate()
             ret_code = self.mock_proc.poll()
             if (ret_code == None):
-                self.logger.info(f'Mock server did not terminate properly. \
-                            Please close the Mock server window.')
+                self.logger.info('Mock server did not terminate properly.\n' +
+                                 'Please close the Mock server window.')
     
     async def set_ms_scan_tx_level(self, scan_level_range):
         if scan_level_range[0] <= scan_level_range[1]:
