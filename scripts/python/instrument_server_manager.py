@@ -6,17 +6,17 @@ from multiprocessing import Queue
 from protocol import Protocol
 from queue import Empty, Full
 
+class InstrMsgIds(Enum):
+    SCAN = 1
+    FINISHED_ACQUISITION = 2
+    ERROR = 3
+
 class InstrumentServerManager:
     '''
     Parameters
     ----------
     
     '''
-    
-    class CallbackIds(Enum):
-        SCAN = 1
-        FINISHED_ACQUISITION = 2
-        ERROR = 3
     
     def __init__(self, protocol, app_cb, loop):
         self.proto = protocol
@@ -144,10 +144,10 @@ class InstrumentServerManager:
         elif ('EVT' == msg_type):
             if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
                 self.logger.info('Finish message received in instrument server manager')
-                self.app_cb(self.CallbackIds.FINISHED_ACQUISITION, None)
+                self.app_cb(InstrMsgIds.FINISHED_ACQUISITION, None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
                 #self.logger.info('Scan received in instrument server manager')
-                self.app_cb(self.CallbackIds.SCAN, payload)
+                self.app_cb(InstrMsgIds.SCAN, payload)
         else:
             pass
             

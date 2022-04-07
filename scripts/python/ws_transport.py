@@ -42,14 +42,17 @@ class WebSocketTransport(TransportLayer):
             WebSocket uri (universal resource identifier) to connect to
         """
         
+        # Get uri from address if address is provided. Declare ws_protocol, and
+        # set state to disconnected.
         self.uri = self.address_from_uri(address)
         self.ws_protocol = None
         self.state = self.TL_STATE_DISCONNECTED
-        self.start_time = 0
+        
         # Set the logging level to WARNING to avoid unnecessery logs coming out
         # from the websockets module
         websockets_logger = logging.getLogger('websockets')
         websockets_logger.setLevel(logging.WARNING)
+        
         # Create module logger
         self.logger = logging.getLogger(__name__)
 
@@ -141,19 +144,3 @@ class WebSocketTransport(TransportLayer):
             raise wste.WebSocketTransportException(
                 "Cannot send on WebSocket when not connected!",
                 "Invalid WebSocketTransport State")
-                
-
-async def main():
-    uri = f'ws://localhost:4649/SWSS'
-    eob = "END OF BROADCAST"
-    async with WebSocketTransport(uri) as ws_transport:
-        receiving = True
-        while receiving:
-            message = await ws_transport.receive()
-            print(f'< {message} >')
-            if message == eob:
-                receiving = False
-
-
-if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())

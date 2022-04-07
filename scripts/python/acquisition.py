@@ -13,7 +13,6 @@ from enum import Enum
 from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
-import sys
 
 class AcqMsgIDs(Enum):
     SCAN = 1
@@ -38,10 +37,7 @@ DEFAULT_NAME = "Default Acquisition"
 
 class Acquisition:
     def __init__(self, queue_in, queue_out):
-    #             acquisition_workflow = aw.AcquisitionWorkflow(),
-    #             pre_acquisition = None,
-    #             intra_acquisition = None,
-    #             post_acquisition = None):
+
         self.name = DEFAULT_NAME
         self.instrument = MassSpectrometerInstrument()
         self.acquisition_workflow = aw.AcquisitionWorkflow(),
@@ -54,28 +50,6 @@ class Acquisition:
         self.queue_out = queue_out
         self.status_lock = threading.Lock()
         self.acquisition_status = AcquisitionStatusIds.ACQUISITION_IDLE
-        
-        #if acquisition_workflow.__class__ in self.instrument.supported_acquisition_workflows:
-        #    self.acquisition_workflow = acquisition_workflow
-        #else:
-        #    raise ValueError('Acquisition workflow ' +
-        #                     f'{acquisition_workflow.__name__} is not supported for ' +
-        #                     f'{self.instrument.instrument_name} instrument.')
-        #self.pre_acquisition = \
-        #    self.default_action if pre_acquisition is None else pre_acquisition
-        #self.intra_acquisition = \
-        #    self.default_action if intra_acquisition is None else intra_acquisition
-        #self.post_acquisition = \
-        #    self.default_action if post_acquisition is None else post_acquisition
-           
-        
-    def get_module_name(self):
-        module = TestAcquisition.__module__
-    
-        if module == '__main__':
-            filename = sys.modules[self.__module__].__file__
-            module = os.path.splitext(os.path.basename(filename))[0]
-        return module
         
     def fetch_received_scan(self):
         scan = None

@@ -3,7 +3,6 @@ import asyncio
 import json
 import logging
 import logging.config
-import multiprocessing
 import signal
 import time
 import traceback
@@ -13,25 +12,15 @@ from protocol import Protocol
 from transport_layer import TransportLayer
 from ws_transport import WebSocketTransport
 from algorithm import Algorithm
-from algorithm_runner import AlgorithmRunner, AlgorithmSync
-from algorithm_list import AlgorithmList
+from algorithm_runner import AlgorithmRunner
 from mock_server_manager import MockServerManager
-from instrument_server_manager import InstrumentServerManager
-from concurrent.futures import ProcessPoolExecutor
-from concurrent.futures import ThreadPoolExecutor
-from acquisition_manager import AcquisitionManager
-from mock_acquisition_manager import MockAcquisitionManager
+from instrument_server_manager import InstrumentServerManager, InstrMsgIds
 from acquisition import AcqMsgIDs
-
-# For testing only
-from listen_test_algo import ListenTestAlgorithm
-from request_test_algo import RequestTestAlgorithm
 
 VERSION = 'v0.1'
 
 class MSReactorClient:
 
-    DEFAULT_MOCK_URI = f'ws://localhost:4649/SWSS'
     def __init__(self):
         
         # Set up logging
@@ -39,17 +28,21 @@ class MSReactorClient:
             logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
         
-        # Set up async loop an process executor
+        # Set up async loop and process executor
         self.loop = asyncio.new_event_loop()
         self.loop.set_exception_handler(self.custom_exception_handler)
         asyncio.set_event_loop(self.loop)
-        self.executor = ProcessPoolExecutor(max_workers=3)
         
-        # Initialise algorithm, create algorithm list, create algorithm
-        # synchronisation object
-        self.algo = None
-        self.algo_list = AlgorithmList()
-        self.algo_sync = AlgorithmSync()
+        # Instantiate transport and protocol layers here. TODO: if later those 
+        # modules are selectable through the application, the instantiation
+        # can be moved to a separate function. 
+        # Instrument server manager are declared here but not yet instantiated.
+        self.transport = WebSocketTransport()
+        self.protocol = Protocol(self.transport)
+        self.inst_serv_man = None
+        
+        # Instantiate AlgorithmRunner. This is necessary to obtain the list of
+        # available algorithms.
         self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb)
         
     def parse_client_arguments(self):
@@ -114,12 +107,12 @@ class MSReactorClient:
         return parser.parse_args()
         
     def instrument_server_manager_cb(self, id, args = None):
-        if (self.inst_serv_man.CallbackIds.SCAN == id):
+        if (InstrMsgIds.SCAN == id):
             self.algo_runner.deliver_scan(args)
-        elif (self.inst_serv_man.CallbackIds.FINISHED_ACQUISITION == id):
+        elif (InstrMsgIds.FINISHED_ACQUISITION == id):
             self.logger.info('Received finished acquisition message.')
             self.algo_runner.acquisition_ended()
-        elif (self.inst_serv_man.CallbackIds.ERROR_CB == id):
+        elif (InstrMsgIds.ERROR_CB == id):
             self.logger.error(args)
         
     async def algorithm_runner_cb(self, id, args = None):
@@ -142,13 +135,7 @@ class MSReactorClient:
         elif (AcqMsgIDs.ERROR == id):
             self.logger.error(args)
         
-    def init_communication_layer(self):
-        self.transport = WebSocketTransport()
-        self.protocol = Protocol(self.transport)
-        
     async def normal_app(self, loop, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
         # Init the instrument server manager
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
@@ -179,9 +166,6 @@ class MSReactorClient:
             self.logger.error("Connection Failed")
     
     async def mock_app(self, loop, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
-        
         # Init the mock instrument server manager
         self.inst_serv_man = MockServerManager(self.protocol,
                                                self.instrument_server_manager_cb,
@@ -215,15 +199,12 @@ class MSReactorClient:
                 self.inst_serv_man.terminate_mock_server()
         else:
             self.logger.error("Connection Failed")
+            self.inst_serv_man.terminate_mock_server()
             
     async def test_app(self, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
         # Init the instrument server manager
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
-                                    self.algo_sync,
-                                    None,
                                     self.instrument_server_manager_cb,
                                     loop)
 
@@ -240,34 +221,15 @@ class MSReactorClient:
             
             # Collect possible parameters for requesting custom scans
             possible_params = await self.inst_serv_man.get_possible_params()
-            
-            listen_test = ListenTestAlgorithm()
-            
-            callback_id_subsets = \
-                Enum("CallbackIdSubset", [(a.name, a.value) for a in self.algo_runner.CallbackIds if a.value < 6 ])
-                                            
-            await loop.run_in_executor(self.executor,
-                                       self.algo.algorithm_body)
-            
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            #if self.algo_runner.select_algorithm(args.alg, "Tribid"):
-                #await asyncio.gather(self.start_instrument(),
-                                     #self.algo_runner.run_algorithm())
-            #    await self.algo_runner.run_algorithm()
-            #else:
-            #    self.logger.error(f"Failed loading {args.alg}")
+            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                await self.algo_runner.run_algorithm()
+            else:
+                self.logger.error(f"Failed loading {args.alg}")
             
         else:
             self.logger.error("Connection Failed")
-        
-    def test_algo_cb(self):
-        pass
-        
-    async def start_mock_instrument(self):
-        await self.inst_serv_man.subscribe_to_scans()
-        await self.inst_serv_man.set_ms_scan_tx_level(self.algo.TRANSMITTED_SCAN_LEVEL)
-        await self. inst_serv_man.prepare_acquisition()
         
     def custom_exception_handler(loop, context):
         # first, handle with default handler
@@ -276,11 +238,6 @@ class MSReactorClient:
         message = context.get('exception', context["message"])
         self.logger.info(f'Caught exception: {message}')
         asyncio.create_task(self.shutdown(loop))
-        #if isinstance(exception, ZeroDivisionError):
-        #    self.logger.info(context)
-        #    loop.stop()
-        #self.logger.info(context)
-        #loop.stop()
         
     async def shutdown(loop, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
@@ -315,4 +272,8 @@ if __name__ == "__main__":
             traceback.print_exc()
             loop.stop()
     elif ('test' == args.command):
-        client.test_app(args)
+        try:
+            loop.run_until_complete(client.test_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()
