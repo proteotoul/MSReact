@@ -18,6 +18,7 @@ class AcquisitionWorkflows:
 
 class AcquisitionWorkflow:
     name = "base acquisition workflow"
+    type_id = -1
     is_supported = False
     is_acquisition_triggering = True
     parameter = None
@@ -33,7 +34,7 @@ class AcquisitionWorkflow:
                              f'{self.__class__.__name__} workflow.')
         
     def set_parameter(self, parameter):
-        if validate_parameter(parameter):
+        if self.validate_parameter(parameter):
             self.parameter = parameter
         else:
             pass
@@ -44,15 +45,22 @@ class AcquisitionWorkflow:
     def validate_parameter(self, parameter):
         return True
         
+    def get_acquisition_workflow_representation(self):
+        return {"AcquisitionType" : str(self.type_id),
+                "AcquisitionParam" : str(self.parameter)}
+        
 class Listening(AcquisitionWorkflow):
     name = "listening"
+    type_id = 1
     is_acquisition_triggering = False
         
 class Permanent(AcquisitionWorkflow):
     name = "permanent"
+    type_id = 2
         
 class LimitedByCount(AcquisitionWorkflow):
     name = "limited by count"
+    type_id = 3
     parameter_types = int
     
     def validate_parameter(self, parameter):
@@ -60,6 +68,7 @@ class LimitedByCount(AcquisitionWorkflow):
         
 class LimitedByDuration(AcquisitionWorkflow):
     name = "limited by duration"
+    type_id = 4
     parameter_types = (int, float)
     
     def validate_parameter(self, parameter):
@@ -67,6 +76,7 @@ class LimitedByDuration(AcquisitionWorkflow):
         
 class Method(AcquisitionWorkflow):
     name = "method"
+    type_id = 5
     method_extension = ".meth"
     parameter_types = str
     

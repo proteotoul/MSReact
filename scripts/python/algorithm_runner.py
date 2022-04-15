@@ -32,7 +32,7 @@ class AlgorithmRunner:
         Stops running the algorithm
     """
     
-    def __init__(self, app_cb):
+    def __init__(self, app_cb, algo_list):
         """
         Parameters
         ----------
@@ -46,11 +46,9 @@ class AlgorithmRunner:
             Spectrometer instrument
         """
         
-        # Instantiate the algorithm list
-        self.algo_list = AlgorithmList()
-        
         # Register app callback and logging
         self.app_cb = app_cb
+        self.algo_list = algo_list
         self.logger = logging.getLogger(__name__)
         
         # Create process pool, listening event and queues for multiprocessing
@@ -58,7 +56,7 @@ class AlgorithmRunner:
         self.listening = multiprocessing.Manager().Event()
         self.acq_in_q = multiprocessing.Manager().Queue()
         self.acq_out_q = multiprocessing.Manager().Queue()
-        
+    
     def select_algorithm(self, algorithm, instrument_info):
         self.logger.info(f'Selecting algorithm {algorithm}')
         success = True

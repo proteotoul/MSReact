@@ -1,8 +1,32 @@
 from algorithm import Algorithm
-import json
+from acquisition import Acquisition, AcquisitionStatusIds
+from tribid_instrument import ThermoTribidInstrument
 import logging
 import time
-import csv
+
+class MonitorAcquisition(Acquisition):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.name = 'Monitor_algo_first_acquisition'
+        self.instrument = ThermoTribidInstrument()
+        
+    def pre_acquisition(self):
+        self.logger.info('Executing pre-acquisition steps.')
+        
+    def intra_acquisition(self):
+        self.logger.info('Executing intra-acquisition steps.')
+        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
+            scan = self.fetch_received_scan()
+            if (scan is not None):
+                self.logger.info('Received scan with can number: ' + 
+                                 f'{scan["ScanNumber"]} Centroid count :' + 
+                                 str(scan["CentroidCount"]))
+            else:
+                pass
+        self.logger.info('Finishing intra acquisition.')
+    
+    def post_acquisition(self):
+        self.logger.info('Executing post-acquisition steps.')
 
 class MonitorAlgorithm(Algorithm):
     """
@@ -57,8 +81,9 @@ class MonitorAlgorithm(Algorithm):
     TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     def __init__(self):
+        super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_sequence = [ MonitorAcquisition ]
         self.logger = logging.getLogger(__name__)
         
     def algorithm_body(self):

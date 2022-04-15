@@ -9,7 +9,7 @@ class MassSpectrometerInstrument:
         pass
     
     def get_supported_acquisition_workflows(self):
-        return self.acquisitionModes
+        return self.supported_acquisition_workflows
         
     
         

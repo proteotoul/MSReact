@@ -1,5 +1,6 @@
 from ms_instrument import MassSpectrometerInstrument
 import acquisition_workflow as aw
+from acquisition_settings import AcquisitionSettings
 import threading
 import multiprocessing
 import logging
@@ -20,7 +21,7 @@ class AcqMsgIDs(Enum):
     FETCH_RECEIVED_SCAN = 3
     REQUEST_REPEATING_SCAN = 4
     CANCEL_REPEATING_SCAN = 5
-    REQUEST_ACQUISITION_START = 6
+    READY_FOR_ACQUISITION_START = 6
     REQUEST_ACQUISITION_STOP = 7
     ACQUISITION_ENDED = 8
     ERROR = 9
@@ -37,19 +38,23 @@ DEFAULT_NAME = "Default Acquisition"
 
 class Acquisition:
     def __init__(self, queue_in, queue_out):
-
+    
         self.name = DEFAULT_NAME
+        
+        self.queue_in = queue_in
+        self.queue_out = queue_out
+        self.scan_queue = queue.Queue()
+        self.status_lock = threading.Lock()
+        
         self.instrument = MassSpectrometerInstrument()
-        self.acquisition_workflow = aw.AcquisitionWorkflow(),
-        self.acquisition_finished = threading.Event()
+        self.settings = AcquisitionSettings()
+        self.status = AcquisitionStatusIds.ACQUISITION_IDLE
+        
+        # Since the acquisition objects are instantiated in separate processes,
+        # logging needs to be initialized again
         with open("log_conf.json", "r", encoding="utf-8") as fd:
             logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
-        self.scan_queue = queue.Queue()
-        self.queue_in = queue_in
-        self.queue_out = queue_out
-        self.status_lock = threading.Lock()
-        self.acquisition_status = AcquisitionStatusIds.ACQUISITION_IDLE
         
     def fetch_received_scan(self):
         scan = None
@@ -59,10 +64,10 @@ class Acquisition:
             pass
         return scan
         
-    def start_acquisition(self):
+    def signal_ready_for_acquisition(self):
         # if it's listening workflow, then this should do nothing
-        self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_START,
-                            self.acquisition_workflow))
+        self.queue_out.put((AcqMsgIDs.READY_FOR_ACQUISITION_START, 
+                            self.settings))
         
     def request_custom_scan(self, request):
         self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
@@ -146,8 +151,8 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
                          daemon=True)
     acquisition.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_RUNNING)
     intra_acq_thread.start()
-    acquisition.logger.info('Request acquisition start')
-    acquisition.start_acquisition()
+    acquisition.logger.info('Signal "Ready for acquisition".')
+    acquisition.signal_ready_for_acquisition()
     # Wait for acquisition to finish and signal it to the thread when it happens
     # TODO: This is okay for now, but should listen for error messages during
     #       pre and post acquisition too
@@ -186,5 +191,3 @@ async def test_stop_acq(queue_in):
 
 if __name__ == "__main__":
     asyncio.run(test_run_acq())
-    #acq = TestAcquisition(acquisition_workflow = aw.Listening)
-    #print(acq.name)

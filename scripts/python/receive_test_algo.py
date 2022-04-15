@@ -7,13 +7,11 @@ import logging
 import time
 import csv
 
-class ListenTestAcquisition(Acquisition):
+class ReceiveTestAcquisition(Acquisition):
     def __init__(self, *args):
         super().__init__(*args)
-        self.name = 'Listen_test_algo_first_acquisition'
+        self.name = 'Receive_test_algo_first_acquisition'
         self.instrument = ThermoTribidInstrument()
-        self.acquisition_workflow = aw.Listening()
-        self.logger = logging.getLogger(__name__)
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
@@ -36,9 +34,9 @@ class ListenTestAcquisition(Acquisition):
         self.logger.info('Executing post-acquisition steps.')
         self.fp.close()
 
-class ListenTestAlgorithm(Algorithm):
+class ReceiveTestAlgorithm(Algorithm):
     """
-    Algorithm testing the listening functionality of the client
+    Algorithm testing the receiving functionality of the client
 
     ...
 
@@ -78,7 +76,7 @@ class ListenTestAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'listen_test'
+    ALGORITHM_NAME = 'receive_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -91,7 +89,7 @@ class ListenTestAlgorithm(Algorithm):
     def __init__(self):
         super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = [ ListenTestAcquisition ]
+        self.acquisition_sequence = [ ReceiveTestAcquisition ]
         self.logger = logging.getLogger(__name__)
         
     
@@ -148,7 +146,7 @@ class ListenTestAlgorithm(Algorithm):
         self.logger.info(f'Exited algorithm loop')
         
 if __name__ == "__main__":
-    algo = ListenTestAlgorithm()
+    algo = ReceiveTestAlgorithm()
     algo.pre_acquisition()
     algo.intra_acquisition()
     algo.post_acquisition()

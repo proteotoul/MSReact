@@ -8,14 +8,17 @@ import time
 import traceback
 import websockets as ws
 import ws_transport_exception as wste
+from acquisition import AcqMsgIDs
+from algorithm import Algorithm
+from algorithm_list import AlgorithmList
+from algorithm_runner import AlgorithmRunner
+from custom_test import CustomTest
+from instrument_server_manager import InstrumentServerManager, InstrMsgIDs
+from mock_server_manager import MockServerManager
 from protocol import Protocol
+from test_list import TestList
 from transport_layer import TransportLayer
 from ws_transport import WebSocketTransport
-from algorithm import Algorithm
-from algorithm_runner import AlgorithmRunner
-from mock_server_manager import MockServerManager
-from instrument_server_manager import InstrumentServerManager, InstrMsgIds
-from acquisition import AcqMsgIDs
 
 VERSION = 'v0.1'
 
@@ -40,10 +43,11 @@ class MSReactorClient:
         self.transport = WebSocketTransport()
         self.protocol = Protocol(self.transport)
         self.inst_serv_man = None
+        self.algo_runner = None
         
-        # Instantiate AlgorithmRunner. This is necessary to obtain the list of
-        # available algorithms.
-        self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb)
+        # Instantiate the algorithm  and test algorithm lists
+        self.algo_list = AlgorithmList()
+        self.test_list = TestList()
         
     def parse_client_arguments(self):
         # Top level parser
@@ -55,7 +59,7 @@ class MSReactorClient:
         subparsers = parser.add_subparsers(help='available sub-commands:',
                                            dest='command')
                                            
-        algorithm_choices = self.algo_runner.algo_list.get_available_names()
+        algorithm_choices = self.algo_list.get_available_names()
         algo_choice_string = "\n".join(algorithm_choices)
         
         # Parser for sub-command "normal"
@@ -91,14 +95,15 @@ class MSReactorClient:
                                        and decide if it requests a custom scan')
                                        
         # Parser for sub-command "test"
+        test_choices = self.test_list.get_available_names()
         parser_test = \
             subparsers.add_parser('test',
                                   help='command to use for testing')
                                   
-        #parser_test.add_argument('alg', choices = algorithm_choices,
-        #                         metavar = 'algorithm', default = 'monitor',
-        #                         help=f'algorithm to use during the acquisition, \
-        #                         choices: {", ".join(algorithm_choices)}')
+        parser_test.add_argument('suite', choices = test_choices,
+                                 metavar = 'suite', default = 'monitor',
+                                 help=f'test suite to run, \
+                                 choices: {", ".join(test_choices)}')
         # TODO - This won't be an input, but will be retreived from 
         # the middleware
         parser_test.add_argument('address',
@@ -106,33 +111,31 @@ class MSReactorClient:
 
         return parser.parse_args()
         
-    def instrument_server_manager_cb(self, id, args = None):
-        if (InstrMsgIds.SCAN == id):
+    def instrument_server_manager_cb(self, msg_id, args = None):
+        if (InstrMsgIDs.SCAN == msg_id):
             self.algo_runner.deliver_scan(args)
-        elif (InstrMsgIds.FINISHED_ACQUISITION == id):
+        elif (InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
             self.logger.info('Received finished acquisition message.')
             self.algo_runner.acquisition_ended()
-        elif (InstrMsgIds.ERROR_CB == id):
+        elif (InstrMsgIDs.ERROR_CB == msg_id):
             self.logger.error(args)
         
-    async def algorithm_runner_cb(self, id, args = None):
-        if (AcqMsgIDs.REQUEST_SCAN == id):
+    async def algorithm_runner_cb(self, msg_id, args = None):
+        if (AcqMsgIDs.REQUEST_SCAN == msg_id):
             await self.inst_serv_man.request_scan(args)
-        elif (AcqMsgIDs.REQUEST_REPEATING_SCAN == id):
+        elif (AcqMsgIDs.REQUEST_REPEATING_SCAN == msg_id):
             pass
-        elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == id):
+        elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == msg_id):
             pass
-        elif (AcqMsgIDs.REQUEST_ACQUISITION_START == id):
-            config = {
-            "AcquisitionType": args.name,
-            "AcquisitionParam": args.parameter
-            }
+        elif (AcqMsgIDs.READY_FOR_ACQUISITION_START == msg_id):
             await self.inst_serv_man.subscribe_to_scans()
-            await self.inst_serv_man.configure_acquisition(config)
-            await self.inst_serv_man.start_acquisition()
-        elif (AcqMsgIDs.REQUEST_ACQUISITION_STOP == id):
+            await self.inst_serv_man.configure_acquisition(args.get_settings_dict())
+            if args is not None:
+                if args.acquisition_workflow.is_acquisition_triggering:
+                    await self.inst_serv_man.start_acquisition()
+        elif (AcqMsgIDs.REQUEST_ACQUISITION_STOP == msg_id):
             await self.inst_serv_man.stop_acquisition()
-        elif (AcqMsgIDs.ERROR == id):
+        elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
         
     async def normal_app(self, loop, args):
@@ -155,6 +158,10 @@ class MSReactorClient:
             
             # Collect possible parameters for requesting custom scans
             possible_params = await self.inst_serv_man.get_possible_params()
+            
+            # Init the algorithm runner
+            self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb,
+                                               self.algo_list)
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_runner.select_algorithm(args.alg, "Tribid"):
@@ -189,6 +196,10 @@ class MSReactorClient:
             possible_params = await self.inst_serv_man.get_possible_params()
             
             #self.inst_serv_man.set_ms_scan_tx_level
+            
+            # Init the algorithm runner
+            self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb,
+                                               self.algo_list)
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_runner.select_algorithm(args.alg, "Tribid"):
@@ -201,35 +212,47 @@ class MSReactorClient:
             self.logger.error("Connection Failed")
             self.inst_serv_man.terminate_mock_server()
             
-    async def test_app(self, args):
-        # Init the instrument server manager
-        self.inst_serv_man = \
-            InstrumentServerManager(self.protocol,
-                                    self.instrument_server_manager_cb,
-                                    loop)
-
-        self.logger.info(f'Instrument address: {args.address}')
-        success = await self.inst_serv_man.connect_to_server(args.address)
-        if success:
-            self.logger.info("Successful connection to server!")
-            # Wait a bit after connection
-            await asyncio.sleep(1)
-            
-            loop.create_task(self.inst_serv_man.listen_for_messages())
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_serv_man.select_instrument(1)
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = await self.inst_serv_man.get_possible_params()
-            # TODO: Instrument info should be collected and provided to the 
-            #       function later.
-            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
-                await self.algo_runner.run_algorithm()
-            else:
-                self.logger.error(f"Failed loading {args.alg}")
-            
+    async def test_app(self, loop, args):
+        test = self.test_list.find_custom_test_by_name(args.suite)
+        if test is not None:
+            # It is a custom test
+            test_instance = test(self.protocol, args.address, loop)
+            test_instance.run_test()
         else:
-            self.logger.error("Connection Failed")
+            # It must be an algorithm
+            # Init the instrument server manager
+            self.inst_serv_man = \
+                InstrumentServerManager(self.protocol,
+                                        self.instrument_server_manager_cb,
+                                        loop)
+
+            self.logger.info(f'Instrument address: {args.address}')
+            success = await self.inst_serv_man.connect_to_server(args.address)
+            if success:
+                self.logger.info("Successful connection to server!")
+                # Wait a bit after connection
+                await asyncio.sleep(1)
+                
+                loop.create_task(self.inst_serv_man.listen_for_messages())
+                # Select instrument TODO - This should be instrument discovery
+                await self.inst_serv_man.select_instrument(1)
+                
+                # Collect possible parameters for requesting custom scans
+                possible_params = await self.inst_serv_man.get_possible_params()
+                
+                # Init the algorithm runner
+                self.algo_runner = \
+                    AlgorithmRunner(self.algorithm_runner_cb, 
+                                    self.test_list.algorithm_test_list)
+                # TODO: Instrument info should be collected and provided to the 
+                #       function later.
+                if self.algo_runner.select_algorithm(args.suite, "Tribid"):
+                    await self.algo_runner.run_algorithm()
+                else:
+                    self.logger.error(f"Failed loading {args.suite}")
+                
+            else:
+                self.logger.error("Connection Failed")
         
     def custom_exception_handler(loop, context):
         # first, handle with default handler
@@ -255,7 +278,7 @@ class MSReactorClient:
 if __name__ == "__main__":
     client = MSReactorClient()
     args = client.parse_client_arguments()
-    client.logger.info(f'Selected algorithm: {args.alg}')
+    #client.logger.info(f'Selected algorithm: {args.alg}')
     client.logger.info(f'Selected sub-command: {args.command}')
     loop = asyncio.get_event_loop()
     

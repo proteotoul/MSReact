@@ -1,7 +1,6 @@
 from algorithm import Algorithm
 from acquisition import Acquisition, AcquisitionStatusIds
 from tribid_instrument import ThermoTribidInstrument
-import acquisition_workflow as aw
 import logging
 import time
 
@@ -10,8 +9,6 @@ class RequestTestAcquisition(Acquisition):
         super().__init__(*args)
         self.name = 'Request_test_algo_first_acquisition'
         self.instrument = ThermoTribidInstrument()
-        self.acquisition_workflow = aw.Listening()
-        self.logger = logging.getLogger(__name__)
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
