@@ -18,7 +18,7 @@ class MonitorAcquisition(Acquisition):
         while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
             if (scan is not None):
-                self.logger.info('Received scan with can number: ' + 
+                self.logger.info('Received scan with scan number: ' + 
                                  f'{scan["ScanNumber"]} Centroid count :' + 
                                  str(scan["CentroidCount"]))
             else:
