@@ -1,12 +1,42 @@
 from algorithm import Algorithm
+from acquisition import Acquisition, AcquisitionStatusIds
+from tribid_instrument import ThermoTribidInstrument
+import acquisition_workflow as aw
 import json
 import logging
 import time
 import csv
 
-class ListenTestAlgorithm(Algorithm):
+class ReceiveTestAcquisition(Acquisition):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.name = 'Receive_test_algo_first_acquisition'
+        self.instrument = ThermoTribidInstrument()
+        
+    def pre_acquisition(self):
+        self.logger.info('Executing pre-acquisition steps.')
+        self.fp = open('FusionTrial.json', 'w')
+        
+    def intra_acquisition(self):
+        self.logger.info('Executing intra-acquisition steps.')
+        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
+            scan = self.fetch_received_scan()
+            if scan is not None:
+                try:
+                    json.dump(scan, self.fp, indent=2, sort_keys=True)
+                except Exception as e:
+                    self.logger.error(e)
+            else:
+                pass
+        self.logger.info('Finishing intra acquisition.')
+    
+    def post_acquisition(self):
+        self.logger.info('Executing post-acquisition steps.')
+        self.fp.close()
+
+class ReceiveTestAlgorithm(Algorithm):
     """
-    Algorithm testing the listening functionality of the client
+    Algorithm testing the receiving functionality of the client
 
     ...
 
@@ -46,7 +76,7 @@ class ListenTestAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'listen_test'
+    ALGORITHM_NAME = 'receive_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -57,63 +87,12 @@ class ListenTestAlgorithm(Algorithm):
     TRANSMITTED_SCAN_LEVEL = [1, 2]
     
     def __init__(self):
+        super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = self.DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_sequence = [ ReceiveTestAcquisition ]
         self.logger = logging.getLogger(__name__)
         
-    def configure_algorithm(self, 
-                            fetch_received_scan, 
-                            request_scan,
-                            start_acquisition):
-        """
-        Parameters
-        ----------
-        scan_req_act : function
-            A function that the algorithm can call when it would like to 
-            request a custom scan
-        """
-        self.fetch_received_scan = fetch_received_scan
-        self.request_scan = request_scan
-        self.start_acquisition = start_acquisition
-        
-    def validate_methods_and_sequence(self, methods, sequence):
-        """
-        Parameters
-        ----------
-        method : Method
-            The acquisition method to validate and update the default method to
-        sequence : Sequence
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the acquisition method and 
-              sequence was successful and False if it failed
-        """
-        success = True
-        self.acquisition_methods = methods
-        self.acquisition_sequence = sequence
-        return success
-        
-    def validate_scan_formats(self, rx_scan_format, req_scan_format):
-        """
-        Parameters
-        ----------
-        rx_scan_format : Dict
-            The acquisition method to validate and update the default method to
-        req_scan_format : Dict
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the received scan format and 
-              the requested scan format was successful and False if it failed
-        """
-        success = True
-        self.received_scan_format = rx_scan_format
-        self.requested_scan_format = req_scan_format
-        return success
-        
+    
     def algorithm_body(self):
         # This is temporary until the handling of sequence and methods are figured out
         ''''
@@ -165,3 +144,9 @@ class ListenTestAlgorithm(Algorithm):
                     # No scan was available
                     pass
         self.logger.info(f'Exited algorithm loop')
+        
+if __name__ == "__main__":
+    algo = ReceiveTestAlgorithm()
+    algo.pre_acquisition()
+    algo.intra_acquisition()
+    algo.post_acquisition()

@@ -104,59 +104,6 @@ class DSSOAlgorithm(Algorithm):
                                   'peak1_intensity',
                                   'peak2_intensity'])
         
-    def configure_algorithm(self, 
-                            fetch_received_scan,
-                            request_scan,
-                            start_acquisition):
-        """
-        Parameters
-        ----------
-        scan_req_act : function
-            A function that the algorithm can call when it would like to 
-            request a custom scan
-        """
-        self.fetch_received_scan = fetch_received_scan
-        self.request_scan = request_scan
-        self.start_acquisition = start_acquisition
-        
-    def validate_methods_and_sequence(self, methods, sequence):
-        """
-        Parameters
-        ----------
-        method : Method
-            The acquisition method to validate and update the default method to
-        sequence : Sequence
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the acquisition method and 
-              sequence was successful and False if it failed
-        """
-        success = True
-        #self.acquisition_methods = methods
-        self.acquisition_sequence = sequence
-        return success
-        
-    def validate_scan_formats(self, rx_scan_format, req_scan_format):
-        """
-        Parameters
-        ----------
-        rx_scan_format : Dict
-            The acquisition method to validate and update the default method to
-        req_scan_format : Dict
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the received scan format and 
-              the requested scan format was successful and False if it failed
-        """
-        success = True
-        self.received_scan_format = rx_scan_format
-        self.requested_scan_format = req_scan_format
-        return success
-        
     def algorithm_body(self):
         # This is temporary until the handling of sequence and methods are figured out
         print(f'Algorithm started')

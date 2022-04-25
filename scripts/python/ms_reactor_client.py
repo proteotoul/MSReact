@@ -3,29 +3,27 @@ import asyncio
 import json
 import logging
 import logging.config
-import multiprocessing
 import signal
 import time
 import traceback
 import websockets as ws
 import ws_transport_exception as wste
+from acquisition import AcqMsgIDs
+from algorithm import Algorithm
+from algorithm_list import AlgorithmList
+from algorithm_runner import AlgorithmRunner
+from custom_test import CustomTest
+from instrument_server_manager import InstrumentServerManager, InstrMsgIDs
+from mock_server_manager import MockServerManager
 from protocol import Protocol
+from test_list import TestList
 from transport_layer import TransportLayer
 from ws_transport import WebSocketTransport
-from algorithm import Algorithm
-from algorithm_runner import AlgorithmRunner, AlgorithmSync
-from algorithm_list import AlgorithmList
-from mock_server_manager import MockServerManager
-from instrument_server_manager import InstrumentServerManager
-from concurrent.futures import ProcessPoolExecutor
-from acquisition_manager import AcquisitionManager
-from mock_acquisition_manager import MockAcquisitionManager
 
 VERSION = 'v0.1'
 
 class MSReactorClient:
 
-    DEFAULT_MOCK_URI = f'ws://localhost:4649/SWSS'
     def __init__(self):
         
         # Set up logging
@@ -33,17 +31,23 @@ class MSReactorClient:
             logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
         
-        # Set up async loop an process executor
+        # Set up async loop and process executor
         self.loop = asyncio.new_event_loop()
         self.loop.set_exception_handler(self.custom_exception_handler)
         asyncio.set_event_loop(self.loop)
-        self.executor = ProcessPoolExecutor(max_workers=1)
         
-        # Initialise algorithm, create algorithm list, create algorithm
-        # synchronisation object
-        self.algo = None
+        # Instantiate transport and protocol layers here. TODO: if later those 
+        # modules are selectable through the application, the instantiation
+        # can be moved to a separate function. 
+        # Instrument server manager are declared here but not yet instantiated.
+        self.transport = WebSocketTransport()
+        self.protocol = Protocol(self.transport)
+        self.inst_serv_man = None
+        self.algo_runner = None
+        
+        # Instantiate the algorithm  and test algorithm lists
         self.algo_list = AlgorithmList()
-        self.algo_sync = AlgorithmSync()
+        self.test_list = TestList()
         
     def parse_client_arguments(self):
         # Top level parser
@@ -91,231 +95,164 @@ class MSReactorClient:
                                        and decide if it requests a custom scan')
                                        
         # Parser for sub-command "test"
+        test_choices = self.test_list.get_available_names()
         parser_test = \
             subparsers.add_parser('test',
                                   help='command to use for testing')
                                   
-        parser_test.add_argument('alg', choices = algorithm_choices,
-                                 metavar = 'algorithm', default = 'monitor',
-                                 help=f'algorithm to use during the acquisition, \
-                                 choices: {", ".join(algorithm_choices)}')
+        parser_test.add_argument('suite', choices = test_choices,
+                                 metavar = 'suite', default = 'monitor',
+                                 help=f'test suite to run, \
+                                 choices: {", ".join(test_choices)}')
         # TODO - This won't be an input, but will be retreived from 
         # the middleware
         parser_test.add_argument('address',
                                  help='address to the MSReactor server')
 
         return parser.parse_args()
-    
-    def init_communication_layer(self):
-        self.transport = WebSocketTransport()
-        self.protocol = Protocol(self.transport)
         
-    def normal_app(self, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
+    def instrument_server_manager_cb(self, msg_id, args = None):
+        if (InstrMsgIDs.SCAN == msg_id):
+            self.algo_runner.deliver_scan(args)
+        elif (InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
+            self.logger.info('Received finished acquisition message.')
+            self.algo_runner.acquisition_ended()
+        elif (InstrMsgIDs.ERROR_CB == msg_id):
+            self.logger.error(args)
         
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
+    async def algorithm_runner_cb(self, msg_id, args = None):
+        if (AcqMsgIDs.REQUEST_SCAN == msg_id):
+            await self.inst_serv_man.request_scan(args)
+        elif (AcqMsgIDs.REQUEST_REPEATING_SCAN == msg_id):
+            pass
+        elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == msg_id):
+            pass
+        elif (AcqMsgIDs.READY_FOR_ACQUISITION_START == msg_id):
+            await self.inst_serv_man.subscribe_to_scans()
+            await self.inst_serv_man.configure_acquisition(args.get_settings_dict())
+            if args is not None:
+                if args.acquisition_workflow.is_acquisition_triggering:
+                    await self.inst_serv_man.start_acquisition()
+        elif (AcqMsgIDs.REQUEST_ACQUISITION_STOP == msg_id):
+            await self.inst_serv_man.stop_acquisition()
+        elif (AcqMsgIDs.ERROR == msg_id):
+            self.logger.error(args)
         
+    async def normal_app(self, loop, args):
         # Init the instrument server manager
-        self.inst_serv_man = InstrumentServerManager(self.protocol,
-                                                     self.algo_sync,
-                                                     self.acq_man)
+        self.inst_serv_man = \
+            InstrumentServerManager(self.protocol,
+                                    self.instrument_server_manager_cb,
+                                    loop)
 
         self.logger.info(f'Instrument address: {args.address}')
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server,
-                                  (args.address,)):
+        success = await self.inst_serv_man.connect_to_server(args.address)
+        if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
-            time.sleep(1)
+            await asyncio.sleep(1)
             
+            loop.create_task(self.inst_serv_man.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
+            await self.inst_serv_man.select_instrument(1)
             
             # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
+            possible_params = await self.inst_serv_man.get_possible_params()
             
-            
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync)
-                # Note: args.raw_files were changed to None here.                                        
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
-                                                     
-                    tasks = asyncio.gather(self.start_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
-                    try:
-                        self.loop.run_until_complete(tasks)
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.loop.stop()
+            # Init the algorithm runner
+            self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb,
+                                               self.algo_list)
+            # TODO: Instrument info should be collected and provided to the 
+            #       function later.
+            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                await self.algo_runner.run_algorithm()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
         else:
             self.logger.error("Connection Failed")
-        
     
-    def mock_app(self, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
-        
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
-        
+    async def mock_app(self, loop, args):
         # Init the mock instrument server manager
         self.inst_serv_man = MockServerManager(self.protocol,
-                                               self.algo_sync,
-                                               self.acq_man)
+                                               self.instrument_server_manager_cb,
+                                               loop)
                                                
         self.inst_serv_man.create_mock_server(args.raw_files,
                                               args.scan_interval)
 
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server, None):
+        success = await self.inst_serv_man.connect_to_server()
+        
+        if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
-            time.sleep(1)
+            await asyncio.sleep(1)
             
+            loop.create_task(self.inst_serv_man.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
+            await self.inst_serv_man.select_instrument(1)
             
             # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
+            possible_params = await self.inst_serv_man.get_possible_params()
             
+            #self.inst_serv_man.set_ms_scan_tx_level
             
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync)
-                # Note: args.raw_files were changed to None here.                                       
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
-                                                     
-                    tasks = asyncio.gather(self.start_mock_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
-                    try:
-                        self.loop.run_until_complete(tasks)
-                        self.run_async_as_sync(self.inst_serv_man.request_shut_down_server, None)
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.loop.stop()
-                        self.inst_serv_man.terminate_mock_server()
+            # Init the algorithm runner
+            self.algo_runner = AlgorithmRunner(self.algorithm_runner_cb,
+                                               self.algo_list)
+            # TODO: Instrument info should be collected and provided to the 
+            #       function later.
+            if self.algo_runner.select_algorithm(args.alg, "Tribid"):
+                await self.algo_runner.run_algorithm()
+                await self.inst_serv_man.request_shut_down_server()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
-            
+                self.inst_serv_man.terminate_mock_server()
         else:
             self.logger.error("Connection Failed")
+            self.inst_serv_man.terminate_mock_server()
             
-    def test_app(self, args):
-        # Init transport and protocol layer
-        self.init_communication_layer()
-        
-        # Init acquisition manager that is responsible for the sequence of 
-        # acquisitions. TODO: Revisit these modules
-        self.acq_man = AcquisitionManager()
-        self.acq_man.interpret_acquisition(None, None)
-        
-        # Init the Instrument controller
-        self.inst_serv_man = InstrumentServerManager(self.protocol,
-                                                     self.algo_sync,
-                                                     self.acq_man)
-        # Create URI for connection. TODO: should only address be given and 
-        # the URI generated within the transport layer?
-        self.logger.info(f'Instrument address: {args.address}')
-        if self.run_async_as_sync(self.inst_serv_man.connect_to_server, 
-                                  (args.address,)):
-            self.logger.info("Successful connection to server!")
-            # Wait a bit after connection
-            time.sleep(1)
-            
-            # Select instrument TODO - This should be instrument discovery
-            self.run_async_as_sync(self.inst_serv_man.select_instrument, (1,))
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = \
-                self.run_async_as_sync(self.inst_serv_man.get_possible_params, 
-                                       None)
-            
-            
-            algorithm_type = self.algo_list.find_by_name(args.alg)
-            if algorithm_type is not None:
-                self.algo = algorithm_type()
-                self.algorithm_runner = AlgorithmRunner(self.algo, 
-                                                        None,
-                                                        None,
-                                                        self.algo_sync)
-                # Note: args.raw_files were changed to None here.                                         
-                if self.algorithm_runner.configure_algorithm(None, None, None,
-                                                             possible_params):
-                    algo_proc = \
-                        self.loop.run_in_executor(self.executor,
-                                                  self.algo.algorithm_body)
-                                                     
-                    tasks = asyncio.gather(self.start_instrument(),
-                                           self.inst_serv_man.listen_for_scan_requests(),
-                                           algo_proc)
-                    try:
-                        self.loop.run_until_complete(tasks)
-                    except Exception as e:
-                        traceback.print_exc()
-                        self.loop.stop()
+    async def test_app(self, loop, args):
+        test = self.test_list.find_custom_test_by_name(args.suite)
+        if test is not None:
+            # It is a custom test
+            test_instance = test(self.protocol, args.address, loop)
+            test_instance.run_test()
+        else:
+            # It must be an algorithm
+            # Init the instrument server manager
+            self.inst_serv_man = \
+                InstrumentServerManager(self.protocol,
+                                        self.instrument_server_manager_cb,
+                                        loop)
+
+            self.logger.info(f'Instrument address: {args.address}')
+            success = await self.inst_serv_man.connect_to_server(args.address)
+            if success:
+                self.logger.info("Successful connection to server!")
+                # Wait a bit after connection
+                await asyncio.sleep(1)
+                
+                loop.create_task(self.inst_serv_man.listen_for_messages())
+                # Select instrument TODO - This should be instrument discovery
+                await self.inst_serv_man.select_instrument(1)
+                
+                # Collect possible parameters for requesting custom scans
+                possible_params = await self.inst_serv_man.get_possible_params()
+                
+                # Init the algorithm runner
+                self.algo_runner = \
+                    AlgorithmRunner(self.algorithm_runner_cb, 
+                                    self.test_list.algorithm_test_list)
+                # TODO: Instrument info should be collected and provided to the 
+                #       function later.
+                if self.algo_runner.select_algorithm(args.suite, "Tribid"):
+                    await self.algo_runner.run_algorithm()
+                else:
+                    self.logger.error(f"Failed loading {args.suite}")
+                
             else:
-                self.logger.error(f"Failed loading {args.alg}")
-            
-        else:
-            self.logger.error("Connection Failed")
-        
-    async def start_mock_instrument(self):
-        await self.inst_serv_man.subscribe_to_scans()
-        await self.inst_serv_man.set_ms_scan_tx_level(self.algo.TRANSMITTED_SCAN_LEVEL)
-        await self.inst_serv_man.listen_for_scans()
-        
-    async def start_instrument(self):
-        config = {
-            "AcquisitionType": "Method",
-            "AcquisitionParam": "default.meth"
-        }
-        '''
-        config = {
-            "AcquisitionType": "LimitedByTime",
-            "AcquisitionParam": "5"
-        }'''
-        
-        await self.inst_serv_man.subscribe_to_scans()
-        await self.inst_serv_man.configure_acquisition(config)
-        await self.inst_serv_man.listen_for_scans()
-        
-    def run_async_as_sync(self, coroutine, args):
-        loop = self.loop
-        if args is not None:
-            result = loop.run_until_complete(coroutine(*args))
-        else:
-            result = loop.run_until_complete(coroutine())
-        return result
+                self.logger.error("Connection Failed")
         
     def custom_exception_handler(loop, context):
         # first, handle with default handler
@@ -324,11 +261,6 @@ class MSReactorClient:
         message = context.get('exception', context["message"])
         self.logger.info(f'Caught exception: {message}')
         asyncio.create_task(self.shutdown(loop))
-        #if isinstance(exception, ZeroDivisionError):
-        #    self.logger.info(context)
-        #    loop.stop()
-        #self.logger.info(context)
-        #loop.stop()
         
     async def shutdown(loop, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
@@ -346,12 +278,25 @@ class MSReactorClient:
 if __name__ == "__main__":
     client = MSReactorClient()
     args = client.parse_client_arguments()
-    client.logger.info(f'Selected algorithm: {args.alg}')
+    #client.logger.info(f'Selected algorithm: {args.alg}')
     client.logger.info(f'Selected sub-command: {args.command}')
+    loop = asyncio.get_event_loop()
     
     if ('normal' == args.command):
-        client.normal_app(args)
+        try:
+            loop.run_until_complete(client.normal_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()
     elif ('mock' == args.command):
-        client.mock_app(args)
+        try:
+            loop.run_until_complete(client.mock_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()
     elif ('test' == args.command):
-        client.test_app(args)
+        try:
+            loop.run_until_complete(client.test_app(loop, args))
+        except Exception as e:
+            traceback.print_exc()
+            loop.stop()

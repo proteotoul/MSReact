@@ -1,4 +1,5 @@
 import enum
+import threading
 
 class Algorithm:
     '''
@@ -36,9 +37,9 @@ class Algorithm:
     '''
 
     '''Method - TODO: Create default method based on real method.'''
-    ACQUISITION_METHOD = {}   
-    '''Sequence - TODO: Create default method based on real method.'''
-    ACQUISITION_SEQUENCE = {}
+    ACQUISITION_METHOD = {}
+    '''Sequence - List of Acquisitions'''
+    ACQUISITION_SEQUENCE = []
     '''Cycle interval - TODO: This is only for mock.'''
     CYCLE_INTERVAL = 10
     '''Name of the algorithm. This is a mandatory field for the algorithms'''
@@ -57,62 +58,7 @@ class Algorithm:
         acquisition_finished    = 2
     
     def __init__(self):
-        self.acquisition_method = DEFAULT_ACQUISITION_METHOD
-        self.acquisition_sequence = DEFAULT_ACQUISITION_SEQUENCE
+        self.acquisition_method = self.ACQUISITION_METHOD
+        self.acquisition_sequence = self.ACQUISITION_SEQUENCE
+        self.current_acquisition = None
         
-    def configure_algorithm(self, 
-                            fetch_received_scan, 
-                            request_scan,
-                            start_acquisition):
-        """
-        Parameters
-        ----------
-        scan_req_act : function
-            A function that the algorithm can call when it would like to 
-            request a custom scan
-        """
-        self.fetch_received_scan = fetch_received_scan
-        self.request_scan = request_scan
-        self.start_acquisition = start_acquisition
-        self.finish_algo = finish_algo
-        
-    def validate_methods_and_sequence(self, methods, sequence):
-        """
-        Parameters
-        ----------
-        method : Method
-            The acquisition method to validate and update the default method to
-        sequence : Sequence
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the acquisition method and 
-              sequence was successful and False if it failed
-        """
-        success = True
-        self.acquisition_method = method
-        self.acquisition_sequence = sequence
-        return success
-        
-    def validate_scan_formats(self, rx_scan_format, req_scan_format):
-        """
-        Parameters
-        ----------
-        rx_scan_format : Dict
-            The acquisition method to validate and update the default method to
-        req_scan_format : Dict
-            The acquisition sequence to validate and update the default 
-            sequence to
-        Returns
-        -------
-        Bool: True if the update and validation of the received scan format and 
-              the requested scan format was successful and False if it failed
-        """
-        success = True
-        self.received_scan_format = rx_scan_format
-        self.requested_scan_format = req_scan_format
-        return success
-        
-    def algorithm_body(self):
-        pass

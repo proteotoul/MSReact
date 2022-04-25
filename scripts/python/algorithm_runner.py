@@ -1,17 +1,12 @@
+from algorithm_list import AlgorithmList
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
+import logging
 from queue import Empty, Full
-
-class AlgorithmSync:
-    
-    def __init__ (self):
-        self.rec_scan_queue = multiprocessing.Manager().Queue()
-        self.scan_req_queue = multiprocessing.Manager().Queue()
-        self.acq_end = multiprocessing.Manager().Event()
-        self.move_to_next_acq = multiprocessing.Manager().Event()
-        self.error = multiprocessing.Manager().Event()
-
+from acquisition import AcqMsgIDs, acquisition_process
+import traceback
+        
 class AlgorithmRunner:
     """
     This module runs the algorithms
@@ -36,11 +31,8 @@ class AlgorithmRunner:
     stop_algorithm:
         Stops running the algorithm
     """
-
-    """Default cycle interval - TODO: This is only for mock."""
-    DEFAULT_CYCLE_INTERVAL = 10
     
-    def __init__(self, algorithm, method, sequence, algo_sync):
+    def __init__(self, app_cb, algo_list):
         """
         Parameters
         ----------
@@ -53,55 +45,83 @@ class AlgorithmRunner:
             The format in which a scan can be requested from the Mass 
             Spectrometer instrument
         """
-        self.algorithm = algorithm
-        self.method = method
-        self.sequence = sequence
-        self.algo_sync = algo_sync
         
-        #TODO - This should be reviewed
-        self.acquisition_finishing = False
+        # Register app callback and logging
+        self.app_cb = app_cb
+        self.algo_list = algo_list
+        self.logger = logging.getLogger(__name__)
         
-    def configure_algorithm(self, methods, 
-                            sequence, rx_scan_format, 
-                            req_scan_format):
-        self.algorithm.configure_algorithm(self.get_scan, 
-                                           self.request_scan,
-                                           self.start_acquisition)
-        success = \
-            self.algorithm.validate_scan_formats(rx_scan_format, req_scan_format)
-        success = \
-            self.algorithm.validate_methods_and_sequence(methods, sequence)
+        # Create process pool, listening event and queues for multiprocessing
+        self.executor = ProcessPoolExecutor(max_workers=3)
+        self.listening = multiprocessing.Manager().Event()
+        self.acq_in_q = multiprocessing.Manager().Queue()
+        self.acq_out_q = multiprocessing.Manager().Queue()
+    
+    def select_algorithm(self, algorithm, instrument_info):
+        self.logger.info(f'Selecting algorithm {algorithm}')
+        success = True
+        selected_algorithm = self.algo_list.find_by_name(algorithm)
+
+        if selected_algorithm is not None:
+            
+            self.algorithm = selected_algorithm()
+            
+            for acquisition in selected_algorithm.ACQUISITION_SEQUENCE:
+                if instrument_info != acquisition.instrument.instrument_name:
+                    success = False
+                    self.logger.error(f'Available instrument {instrument_info}' +
+                                      f' not compatible with {selected_algorithm}.')
+                    break
+        else:
+            success = False
+            self.logger.error(f'Algorithm {algorithm} cannot be selected.')
         return success
         
-    def get_algorithm_process(self):
-        loop = asyncio.get_event_loop()
-        executor = ProcessPoolExecutor()
-        self.algorithm_process = \
-            loop.run_in_executor(executor, self.algorithm.algorithm_body)
-        return self.algorithm_process
+    def acquisition_ended(self):
+        self.acq_in_q.put((AcqMsgIDs.ACQUISITION_ENDED, None))
         
-    def request_scan(self, request):
-        self.algo_sync.scan_req_queue.put(request)
-        
-    def get_scan(self):
-        try:
-            if self.algo_sync.acq_end.is_set() or self.algo_sync.error.is_set():
-                # Set acquisition finishing to true, so next time the queue
-                # is found to be empty, an acquisition finished message is 
-                # sent to the algorithm.
-                self.acquisition_finishing = True
-            scan = (self.algorithm.AcquisitionStatus.scan_available, 
-                    self.algo_sync.rec_scan_queue.get_nowait())
-        except Empty:
-            if self.acquisition_finishing:
-                self.algo_sync.acq_end.clear()
-                scan = (self.algorithm.AcquisitionStatus.acquisition_finished,
-                        None)
-                self.acquisition_finishing = False
-            else:
-                scan = (self.algorithm.AcquisitionStatus.scan_not_available, None)
-        return scan
-        
-    def start_acquisition(self):
-        self.algo_sync.move_to_next_acq.set()
+    def deliver_scan(self, scan):
+        self.acq_in_q.put((AcqMsgIDs.SCAN, scan))
     
+    def instrument_error(self):
+        self.acq_in_q.put((AcqMsgIDs.ERROR, None))
+        
+    async def run_algorithm(self):
+        # Note: Consider handling runtime error that can be raised if there is
+        # no active event loop
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.process_acquisition_requests())
+            await self.execute_algorithm(loop)
+        except Exception as e:
+            traceback.print_exc()
+        self.listening.set()
+            
+    async def execute_algorithm(self, loop):
+        i = 0
+        for acquisition in self.algorithm.acquisition_sequence:
+            self.logger.info(f'Running acquisition sequence: {i}')
+            self.current_acq = acquisition
+            await loop.run_in_executor(self.executor,
+                                       acquisition_process, 
+                                       acquisition.__module__,
+                                       acquisition.__name__,
+                                       self.acq_in_q, 
+                                       self.acq_out_q)
+        self.logger.info(f'Algorithm execution ended.')
+                                       
+    async def process_acquisition_requests(self):
+        try:
+            self.logger.info(f'Process acquisition requests function entered.')
+            while not self.listening.is_set():
+                try:
+                    request, args = self.acq_out_q.get_nowait()
+                    self.logger.info(f'Got request from algorithm: {request} ' +
+                                     f'payload: {args}')
+                    await self.app_cb(request, args)
+                except Empty:
+                    pass
+                await asyncio.sleep(0.01)
+            self.logger.info(f'Process acquisition requests loop exited.')
+        except Exception as e:
+            traceback.print_exc()
