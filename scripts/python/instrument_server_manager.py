@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import logging
 import multiprocessing
 from enum import Enum
@@ -28,7 +29,6 @@ class InstrumentServerManager:
         self.logger = logging.getLogger(__name__)
         self.app_cb = app_cb
         
-        self.msg_req_queue = multiprocessing.Manager().Queue()
         self.loop = loop
         
     async def connect_to_server(self, address = None):
@@ -46,27 +46,62 @@ class InstrumentServerManager:
         self.address = None
         await self.proto.tl.disconnect()
         
-    def get_protocol_version(self):
+    async def get_protocol_version(self):
         self.logger.info('Getting protocol version')
-        self.msg_req_queue.put((self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD,
-                                self.proto.MessageIDs.SERVER_PROTO_VER_RSP))
-        #await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD)
-        #msg, payload = await self.wait_for_response()
-        #if (self.proto.MessageIDs.SERVER_PROTO_VER_RSP == msg):
-        #    self.logger.info(f'Received version: {payload}')
-        #else:
-        #    pass
-            # Raise exception
-        #return payload
-        
-    async def get_possible_params(self):
-        self.logger.info('Getting possible parameters for requesting scans...')
-        await self.proto.send_message(self.proto.MessageIDs.GET_POSSIBLE_PARAMS_CMD)
+
+        await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD)
         msg, payload = await self.wait_for_response()
-        if (self.proto.MessageIDs.POSSIBLE_PARAMS_RSP != msg):
-            # TODO - raise exception
-            self.logger.error("Response was not POSSIBLE_PARAMS message.")
-            quit()
+        if (self.proto.MessageIDs.SERVER_PROTO_VER_RSP == msg):
+            self.logger.info(f'Received protocol version: {payload}')
+        else:
+            pass
+            # Raise exception
+        return payload
+        
+    async def get_server_version(self):
+        self.logger.info('Getting server software version')
+        
+        await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_SW_VER_CMD)
+        msg, payload = await self.wait_for_response()
+        if (self.proto.MessageIDs.SERVER_SW_VER_RSP == msg):
+            self.logger.info(f'Received server software version: {payload}')
+        else:
+            pass
+        return payload
+        
+    async def get_available_instruments(self):
+        self.logger.info('Getting available instruments')
+        
+        await self.proto.send_message(self.proto.MessageIDs.GET_AVAILABLE_INSTR_CMD)
+        msg, payload = await self.wait_for_response()
+        if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
+            self.logger.info(f'Available instruments: {payload}')
+        else:
+            pass
+        return payload
+        
+    async def get_instrument_info(self, instrument):
+        self.logger.info(f'Requesting info about instrument {instrument}')
+        
+        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_INFO_CMD,
+                                      instrument)
+        msg, payload = await self.wait_for_response()
+        if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
+            self.logger.info(f'Instrument info:\n{payload}')
+        else:
+            pass
+        return payload
+        
+    async def get_instrument_state(self, instrument):
+        self.logger.info(f'Get instrument state of instrument: {instrument}')
+        
+        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_STATE_CMD,
+                                      instrument)
+        msg, payload = await self.wait_for_response()
+        if (self.proto.MessageIDs.INSTR_STATE_RSP == msg):
+            self.logger.info(f'Instrument state:\n{payload}')
+        else:
+            pass
         return payload
         
     async def select_instrument(self, instrument):
@@ -78,6 +113,25 @@ class InstrumentServerManager:
             self.logger.error("Problem with instrument selection.")
             raise Exception("Problem with instrument selection.")
         
+    async def get_possible_params(self):
+        self.logger.info('Getting possible parameters for requesting scans...')
+        await self.proto.send_message(self.proto.MessageIDs.GET_POSSIBLE_PARAMS_CMD)
+        msg, payload = await self.wait_for_response()
+        if (self.proto.MessageIDs.POSSIBLE_PARAMS_RSP != msg):
+            # TODO - raise exception
+            self.logger.error("Response was not POSSIBLE_PARAMS message.")
+            quit()
+        else:
+            field_names = ['Name', 'Selection', 'DefaultValue', 'Help']
+                  
+            with open('PossibleParams.csv', 'w', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames = field_names)
+                writer.writeheader()
+                self.logger.info(payload)
+                for v in payload:
+                    writer.writerow(v)
+        return payload
+        
     async def request_scan(self, parameters):
         #self.logger.info(f'Requesting scans with the following parameters:\n{parameters}')
         await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN_CMD,
@@ -86,6 +140,16 @@ class InstrumentServerManager:
         #if (self.proto.MessageIDs.OK_RSP != msg):
         #    self.logger.error("Problem with custom scan request.")
         #    raise Exception("Problem with custom scan request.")
+        
+    async def cancel_custom_scan(self):
+        await self.proto.send_message(self.proto.MessageIDs.CANCEL_CUSTOM_SCAN_CMD)
+        
+    async def request_repeating_scan(self, parameters):
+        await self.proto.send_message(self.proto.MessageIDs.SET_REPEATING_SCAN_CMD,
+                                      parameters)
+                                      
+    async def cancel_repeating_scan(self):
+        await self.proto.send_message(self.proto.MessageIDs.CLEAR_REPEATING_SCAN_CMD)
         
     async def subscribe_to_scans(self):
         self.logger.info('Subscribing for scans.')
