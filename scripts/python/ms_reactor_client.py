@@ -129,6 +129,7 @@ class MSReactorClient:
             pass
         elif (AcqMsgIDs.READY_FOR_ACQUISITION_START == msg_id):
             await self.inst_serv_man.subscribe_to_scans()
+            self.logger.info(f'{args.get_settings_dict()}')
             await self.inst_serv_man.configure_acquisition(args.get_settings_dict())
             if args is not None:
                 if args.acquisition_workflow.is_acquisition_triggering:
