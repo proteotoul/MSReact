@@ -17,9 +17,15 @@ class RequestTestAcquisition(Acquisition):
         self.logger.info('Executing intra-acquisition steps.')
         while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
-            if ((scan is not None) and (2 == scan["MSScanLevel"])):
-                time.sleep(0.4)
-                self.request_custom_scan({"Precursor_mz": str(scan["PrecursorMass"])})
+            if ((scan is not None) and (1 == scan["MSScanLevel"])):
+                selectedCentroid = scan["Centroids"][0]
+                for centroid in scan["Centroids"]:
+                    selectedCentroid = \
+                        selectedCentroid if (selectedCentroid["Intensity"] > centroid["Intensity"]) else centroid
+                        
+                self.request_custom_scan({"PrecursorMass": str(selectedCentroid["Mz"]),
+                                          "ScanType": "MSn"})
+                time.sleep(0.1)
             else:
                 pass
         self.logger.info('Finishing intra acquisition.')
