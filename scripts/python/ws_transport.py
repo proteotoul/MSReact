@@ -60,7 +60,8 @@ class WebSocketTransport(TransportLayer):
     # used.
     # __aenter__ is the asynchronous version of the __enter__ context manager
     async def __aenter__(self):
-        await self.connect(self.uri)
+        # Revisit if not having maximum size can cause security issues
+        await self.connect(self.uri, max_size = None)
         return self
 
     # __aexit__ is the asynchronous version of the __exit__ context manager
@@ -85,7 +86,9 @@ class WebSocketTransport(TransportLayer):
             self.uri = self.address_from_uri(address)
             self.logger.info(f'Uri: {self.uri}')
             try:
-                self.ws_protocol = await ws.connect(uri=self.uri)
+                # Revisit if not having maximum size can cause security issues
+                self.ws_protocol = await ws.connect(uri=self.uri, 
+                                                    max_size = None)
                 self.state = self.TL_STATE_CONNECTED
                 success = True
             except ConnectionRefusedError as crf:
