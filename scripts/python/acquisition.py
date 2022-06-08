@@ -68,6 +68,9 @@ class Acquisition:
         # if it's listening workflow, then this should do nothing
         self.queue_out.put((AcqMsgIDs.READY_FOR_ACQUISITION_START, 
                             self.settings))
+                            
+    def request_acquisition_stop(self):
+        self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_STOP, None))
         
     def request_custom_scan(self, request):
         self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))

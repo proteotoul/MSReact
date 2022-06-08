@@ -117,8 +117,9 @@ class MSReactorClient:
         elif (InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
             self.logger.info('Received finished acquisition message.')
             self.algo_runner.acquisition_ended()
-        elif (InstrMsgIDs.ERROR_CB == msg_id):
-            self.logger.error(args)
+        elif (InstrMsgIDs.ERROR == msg_id):
+            self.logger.error(f'Receved error message from instrument: {args}')
+            self.algo_runner.instrument_error()
         
     async def algorithm_runner_cb(self, msg_id, args = None):
         if (AcqMsgIDs.REQUEST_SCAN == msg_id):
