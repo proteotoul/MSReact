@@ -7,29 +7,26 @@ import logging
 import time
 import csv
 
+# Count of scans before stopping the acquisition
+ACQUISITION_SCAN_COUNT = 50
+
 # Acquisition settings
-ACQUISITION_WORKFLOW = aw.Permanent
-ACQUISITION_PARAMETER = None
+ACQUISITION_WORKFLOW = aw.LimitedByCount
+ACQUISITION_PARAMETER = ACQUISITION_SCAN_COUNT
 SINGLE_PROCESSING_DELAY = 0
 WAIT_FOR_CONTACT_CLOSURE = False
-RAW_FILE_NAME = "permanent_test.RAW"
+RAW_FILE_NAME = "limited_by_count_test.RAW"
 SAMPLE_NAME = "-"
-COMMENT = "This test is checking whether permanent acquisition " + \
-          "can be initiated and terminated from MSReactor."
-          
-# Acquisition duration in seconds
-ACQUISITION_DURATION = 3
+COMMENT = "This test is checking whether limited by count " + \
+          "acquisition can be initiated and terminated from MSReactor."
 
 # Sleep interval between checking if acquisition is stopped in seconds
 SLEEP_INTERVAL = 0.1
 
-# Timeout on waiting for acquisition to finish in seconds
-ACQUISITION_STOP_TIMEOUT = 5
-
-class TestPermanentAcquisition(Acquisition):
+class TestLimitedByCountAcquisition(Acquisition):
     def __init__(self, *args):
         super().__init__(*args)
-        self.name = 'Test_permanent_acquisition'
+        self.name = 'Test_limited_by_count_acquisition'
         self.instrument = ThermoTribidInstrument()
         
     def pre_acquisition(self):
@@ -48,44 +45,39 @@ class TestPermanentAcquisition(Acquisition):
         
     def intra_acquisition(self):
         self.logger.info('Executing intra-acquisition steps.')
-        start_time = time.time()
-        
-        while (((time.time() - start_time) < ACQUISITION_DURATION) and
-               (AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status())):
+        scan_count = 0
+        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
             if (scan is not None):
                 self.logger.info('Received scan with scan number: ' + 
                                  f'{scan["ScanNumber"]} Centroid count :' + 
                                  str(scan["CentroidCount"]))
+                scan_count = scan_count + 1
             else:
                 pass
                 
-        if (AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status()):
-            self.logger.info('Request acquisition finish')
-            self.request_acquisition_stop()
-            
-            success = True
-            start_time = time.time()
-            while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
-                time.sleep(SLEEP_INTERVAL)
-                if time.time() - start_time > ACQUISITION_STOP_TIMEOUT:
-                    success = False
-                    break
-            if success:
-                self.logger.info('Permanent acquisition test succeeded.')
-            else:
-                self.logger.info('Permanent acquisition test failed: ' +
-                                 'Acquisition did not stop within ' +
-                                 f'{ACQUISITION_STOP_TIMEOUT} seconds from requesting it.')
+        # There might be some scan(s) left in the queue
+        # Note: The := operator only exsists from python 3.8 
+        # See PEP 572 – Assignment Expressions
+        while (scan := self.fetch_received_scan()) is not None:
+            self.logger.info('Received scan with scan number: ' + 
+                                 f'{scan["ScanNumber"]} Centroid count :' + 
+                                 str(scan["CentroidCount"]))
+            scan_count = scan_count + 1
+                
+        if scan_count == ACQUISITION_SCAN_COUNT:
+            self.logger.info('Limited by count test succeeded.')
         else:
-            self.logger.info('Permanent acquisition test failed: ' + 
-                             'Acquisition finished before the planned acquisition duration.')
-        self.logger.info('Finishing intra acquisition.')
+            self.logger.info('Limited by count test failed.')
+        self.logger.info(f'Requested scan count: {ACQUISITION_SCAN_COUNT} ' + 
+                         f'Actual scan count: {scan_count}')
+
+        self.logger.info('Finishing intra-acquisition.')
     
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
 
-class PermAcqTestAlgorithm(Algorithm):
+class LimCountAcqTestAlgorithm(Algorithm):
 
     """Method - TODO: Create default method based on real method."""
     DEFAULT_ACQUISITION_METHODS = {}
@@ -94,7 +86,7 @@ class PermAcqTestAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'perm_acq_test'
+    ALGORITHM_NAME = 'lim_count_acq_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -107,11 +99,11 @@ class PermAcqTestAlgorithm(Algorithm):
     def __init__(self):
         super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = [ TestPermanentAcquisition ]
+        self.acquisition_sequence = [ TestLimitedByCountAcquisition ]
         self.logger = logging.getLogger(__name__)
         
 if __name__ == "__main__":
-    algo = PermAcqTestAlgorithm()
+    algo = LimCountAcqTestAlgorithm()
     algo.pre_acquisition()
     algo.intra_acquisition()
     algo.post_acquisition()

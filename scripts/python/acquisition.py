@@ -153,9 +153,13 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
                          target=acquisition.intra_acquisition,
                          daemon=True)
     acquisition.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_RUNNING)
-    intra_acq_thread.start()
+    # TODO: The start of the intra acquisition thread could be done before or after
+    # the signaling to the client. Should be decided. Possible synchronisation of start
+    # could be considered.
+    # intra_acq_thread.start()
     acquisition.logger.info('Signal "Ready for acquisition".')
     acquisition.signal_ready_for_acquisition()
+    intra_acq_thread.start()
     # Wait for acquisition to finish and signal it to the thread when it happens
     # TODO: This is okay for now, but should listen for error messages during
     #       pre and post acquisition too
