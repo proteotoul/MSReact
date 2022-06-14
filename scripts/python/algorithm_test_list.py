@@ -5,13 +5,15 @@ from receive_test_algo import ReceiveTestAlgorithm
 from perm_acq_test_algo import PermAcqTestAlgorithm
 from lim_count_acq_test_algo import LimCountAcqTestAlgorithm
 from lim_duration_acq_test_algo import LimDurationAcqTestAlgorithm
+from meth_acq_test_algo import MethodAcqTestAlgorithm
 
 class AlgorithmTestList(AlgorithmList):
     ALGO_LIST = [RequestTestAlgorithm,
                  ReceiveTestAlgorithm,
                  PermAcqTestAlgorithm,
                  LimCountAcqTestAlgorithm,
-                 LimDurationAcqTestAlgorithm]
+                 LimDurationAcqTestAlgorithm,
+                 MethodAcqTestAlgorithm]
     
     def __init__(self):
         pass

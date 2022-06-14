@@ -7,23 +7,23 @@ import logging
 import time
 import csv
 
-# Count of scans before stopping the acquisition
-ACQUISITION_SCAN_COUNT = 50
-
 # Acquisition settings
-ACQUISITION_WORKFLOW = aw.LimitedByCount
-ACQUISITION_PARAMETER = ACQUISITION_SCAN_COUNT
+ACQUISITION_WORKFLOW = aw.Method
+# That location should be on the server computer for the moment
+# TODO: Think about how to transfer file through websocket
+ACQUISITION_PARAMETER = 'D:\\dev\\ms-reactor\\some_method_file.meth'
 SINGLE_PROCESSING_DELAY = 0
 WAIT_FOR_CONTACT_CLOSURE = False
-RAW_FILE_NAME = "limited_by_count_test.RAW"
+RAW_FILE_NAME = "method_test.RAW"
 SAMPLE_NAME = "-"
-COMMENT = "This test is checking whether limited by count " + \
-          "acquisition can be initiated from MSReactor."
+COMMENT = "This test is checking whether method acquisition " + \
+          "can be initiated from MSReactor."
 
-class TestLimitedByCountAcquisition(Acquisition):
+
+class TestMethodAcquisition(Acquisition):
     def __init__(self, *args):
         super().__init__(*args)
-        self.name = 'Test_limited_by_count_acquisition'
+        self.name = 'Test_method_acquisition'
         self.instrument = ThermoTribidInstrument()
         
     def pre_acquisition(self):
@@ -42,16 +42,20 @@ class TestLimitedByCountAcquisition(Acquisition):
         
     def intra_acquisition(self):
         self.logger.info('Executing intra-acquisition steps.')
+        start_time = time.time()
         scan_count = 0
-        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
+        
+        while (AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status()):
             scan = self.fetch_received_scan()
             if (scan is not None):
-                self.logger.info('Received scan with scan number: ' +
-                                 f'{scan["ScanNumber"]} Centroid count :' +
+                self.logger.info('Received scan with scan number: ' + 
+                                 f'{scan["ScanNumber"]} Centroid count :' + 
                                  str(scan["CentroidCount"]))
                 scan_count = scan_count + 1
             else:
                 pass
+                
+        duration = abs(time.time() - start_time)
                 
         # There might be some scan(s) left in the queue
         # Note: The := operator only exsists from python 3.8 
@@ -61,20 +65,15 @@ class TestLimitedByCountAcquisition(Acquisition):
                                  f'{scan["ScanNumber"]} Centroid count :' + 
                                  str(scan["CentroidCount"]))
             scan_count = scan_count + 1
-                
-        if scan_count == ACQUISITION_SCAN_COUNT:
-            self.logger.info('Limited by count test succeeded.')
-        else:
-            self.logger.info('Limited by count test failed.')
-        self.logger.info(f'Requested scan count: {ACQUISITION_SCAN_COUNT} ' + 
-                         f'Actual scan count: {scan_count}')
-
-        self.logger.info('Finishing intra-acquisition.')
+        
+        # TODO: Figure out better metrics for testing method based acquisition
+        self.logger.info(f'Method file based acquisition test finished. Acquisition duration: {duration}, Scan count: {scan_count}')
+        self.logger.info('Finishing intra acquisition.')
     
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
 
-class LimCountAcqTestAlgorithm(Algorithm):
+class MethodAcqTestAlgorithm(Algorithm):
 
     """Method - TODO: Create default method based on real method."""
     DEFAULT_ACQUISITION_METHODS = {}
@@ -83,7 +82,7 @@ class LimCountAcqTestAlgorithm(Algorithm):
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
-    ALGORITHM_NAME = 'lim_count_acq_test'
+    ALGORITHM_NAME = 'method_acq_test'
     '''Level of MS scans that are transferred from the mock server.
        eg. - 1 means only MS scans are transferred from the mock server. 
            - 2 means MS and MS2 scans are transferred from the mock server
@@ -96,11 +95,11 @@ class LimCountAcqTestAlgorithm(Algorithm):
     def __init__(self):
         super().__init__()
         self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
-        self.acquisition_sequence = [ TestLimitedByCountAcquisition ]
+        self.acquisition_sequence = [ TestMethodAcquisition ]
         self.logger = logging.getLogger(__name__)
         
 if __name__ == "__main__":
-    algo = LimCountAcqTestAlgorithm()
+    algo = MethodAcqTestAlgorithm()
     algo.pre_acquisition()
     algo.intra_acquisition()
     algo.post_acquisition()

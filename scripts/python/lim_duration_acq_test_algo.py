@@ -21,10 +21,7 @@ WAIT_FOR_CONTACT_CLOSURE = False
 RAW_FILE_NAME = "limited_by_duration_test.RAW"
 SAMPLE_NAME = "-"
 COMMENT = "This test is checking whether limited by duration " + \
-          "acquisition can be initiated and terminated from MSReactor."
-
-# Sleep interval between checking if acquisition is stopped in seconds
-SLEEP_INTERVAL = 0.1
+          "acquisition can be initiated from MSReactor."
 
 class TestLimitedByDurationAcquisition(Acquisition):
     def __init__(self, *args):
