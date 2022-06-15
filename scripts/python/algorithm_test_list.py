@@ -6,6 +6,7 @@ from perm_acq_test_algo import PermAcqTestAlgorithm
 from lim_count_acq_test_algo import LimCountAcqTestAlgorithm
 from lim_duration_acq_test_algo import LimDurationAcqTestAlgorithm
 from meth_acq_test_algo import MethodAcqTestAlgorithm
+from top_n_test_algo import TopNTestAlgorithm
 
 class AlgorithmTestList(AlgorithmList):
     ALGO_LIST = [RequestTestAlgorithm,
@@ -13,7 +14,8 @@ class AlgorithmTestList(AlgorithmList):
                  PermAcqTestAlgorithm,
                  LimCountAcqTestAlgorithm,
                  LimDurationAcqTestAlgorithm,
-                 MethodAcqTestAlgorithm]
+                 MethodAcqTestAlgorithm,
+                 TopNTestAlgorithm]
     
     def __init__(self):
         pass
