@@ -166,8 +166,9 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     acquisition.wait_for_end_or_error()
     acquisition.logger.info('Received message to stop the acquisition.')
     intra_acq_thread.join()
-    if AcquisitionStatusIds.ACQUISITION_ENDED_ERROR != acquisition.get_acquisition_status():
-        acquisition.post_acquisition()
+    # TODO: For now, it is the user's responsibility to check whether an error occured during
+    #       the acquisition and decide what kind of activities to carry out in each case.
+    acquisition.post_acquisition()
     
 async def test_run_acq():
     queue_in = multiprocessing.Manager().Queue()
