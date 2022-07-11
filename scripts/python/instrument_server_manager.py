@@ -212,6 +212,8 @@ class InstrumentServerManager:
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
                 #self.logger.info('Scan received in instrument server manager')
                 self.app_cb(InstrMsgIDs.SCAN, payload)
+            elif (self.proto.MessageIDs.ERROR_EVT == msg):
+                self.app_cb(InstrMsgIDs.ERROR, None)
         else:
             pass
             

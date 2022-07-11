@@ -68,6 +68,9 @@ class Acquisition:
         # if it's listening workflow, then this should do nothing
         self.queue_out.put((AcqMsgIDs.READY_FOR_ACQUISITION_START, 
                             self.settings))
+                            
+    def request_acquisition_stop(self):
+        self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_STOP, None))
         
     def request_custom_scan(self, request):
         self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
@@ -150,17 +153,22 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
                          target=acquisition.intra_acquisition,
                          daemon=True)
     acquisition.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_RUNNING)
-    intra_acq_thread.start()
+    # TODO: The start of the intra acquisition thread could be done before or after
+    # the signaling to the client. Should be decided. Possible synchronisation of start
+    # could be considered.
+    # intra_acq_thread.start()
     acquisition.logger.info('Signal "Ready for acquisition".')
     acquisition.signal_ready_for_acquisition()
+    intra_acq_thread.start()
     # Wait for acquisition to finish and signal it to the thread when it happens
     # TODO: This is okay for now, but should listen for error messages during
     #       pre and post acquisition too
     acquisition.wait_for_end_or_error()
     acquisition.logger.info('Received message to stop the acquisition.')
     intra_acq_thread.join()
-    if AcquisitionStatusIds.ACQUISITION_ENDED_ERROR != acquisition.get_acquisition_status():
-        acquisition.post_acquisition()
+    # TODO: For now, it is the user's responsibility to check whether an error occured during
+    #       the acquisition and decide what kind of activities to carry out in each case.
+    acquisition.post_acquisition()
     
 async def test_run_acq():
     queue_in = multiprocessing.Manager().Queue()
