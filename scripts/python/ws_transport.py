@@ -8,28 +8,29 @@ import ws_transport_exception as wste
 
 class WebSocketTransport(TransportLayer):
     """
-    A class creating a transport layer using WebSocket as transport for 
+    A class implementing a transport layer using WebSocket as transport for 
     communication
 
     ...
 
     Attributes
     ----------
-    uri : str
-       WebSocket uri (universal resource identifier) to connect to
+    address : str
+       IP address of the server to connect to eg. "172.18.160.1"
         
     Methods
     -------
-    connect_to_uri(uri)
-        Connects to a uri using WebSocket protocol
-    disconnect_from_uri()
-        Disconnects from uri
+    connect(address)
+        Connects to a server with a given address using WebSocket protocol
+    disconnect()
+        Disconnects from the server
     receive()
-        Listens for messages over the WebSocket protocol
+        Listens for messages over WebSocket
     send(message)
-        Sends messages over the WebSocket protocol
+        Sends messages over WebSocket
     """
     
+    # Default port, service name and uri for websocket connections
     DEFAULT_PORT = '4649'
     DEFAULT_SERVICE = 'SWSS'
     DEFAULT_URI = f'ws://localhost:4649/DEFAULT'
@@ -38,13 +39,13 @@ class WebSocketTransport(TransportLayer):
         """
         Parameters
         ----------
-        uri : str
-            WebSocket uri (universal resource identifier) to connect to
+        address : str
+            IP address of the server to connect to eg. "172.18.160.1"
         """
         
         # Get uri from address if address is provided. Declare ws_protocol, and
         # set state to disconnected.
-        self.uri = self.address_from_uri(address)
+        self.uri = self.__address_from_uri(address)
         self.ws_protocol = None
         self.state = self.TL_STATE_DISCONNECTED
         
@@ -68,22 +69,28 @@ class WebSocketTransport(TransportLayer):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
         
-    def address_from_uri(self, address = None):
+    def __address_from_uri(self, address = None):
+        """Converts the given address to a uri
+        Parameters
+        ----------
+        address : str
+            IP address of the server to connect to eg. "172.18.160.1"
+        """
         if address is None:
             address = socket.gethostbyname(socket.gethostname())
         return f'ws://{address}:{self.DEFAULT_PORT}/{self.DEFAULT_SERVICE}'
 
     async def connect(self, address = None):
-        """Connects to a uri using WebSocket protocol
+        """Connects to a server with the given address using WebSocket protocol
         Parameters
         ----------
-        uri : str
-            WebSocket uri (universal resource identifier) to connect to
+        address : str
+            IP address of the server to connect to eg. "172.18.160.1"
         """
         success = False
         
         if self.TL_STATE_DISCONNECTED == self.state:
-            self.uri = self.address_from_uri(address)
+            self.uri = self.__address_from_uri(address)
             self.logger.info(f'Uri: {self.uri}')
             try:
                 # Revisit if not having maximum size can cause security issues
@@ -94,13 +101,14 @@ class WebSocketTransport(TransportLayer):
             except ConnectionRefusedError as crf:
                 self.logger.error("The remote computer refused the network connection.")
         else:
-            self.logger.error("Invalid WebSocketTransport State - " +
-                              "Cannot connect to uri when already connected!")
+            self.logger.error('Invalid WebSocketTransport State - ' +
+                              f'Cannot connect to {address} when ' +
+                              'already connected!')
                     
         return success
 
     async def disconnect(self):
-        """Disconnects from a uri"""
+        """Disconnects from a server"""
         if self.state != self.TL_STATE_DISCONNECTED:
             await self.ws_protocol.close()
             self.state = self.TL_STATE_DISCONNECTED
@@ -110,7 +118,7 @@ class WebSocketTransport(TransportLayer):
                 "Invalid WebSocketTransport State")
 
     async def receive(self):
-        """Listens for messages over the WebSocket protocol"""
+        """Listens for messages from the connected server over WebSocket"""
         message = ""
         
         if self.TL_STATE_CONNECTED == self.state:
@@ -119,23 +127,10 @@ class WebSocketTransport(TransportLayer):
             raise wste.WebSocketTransportException(
                 "Cannot listen on WebSocket when not connected!",
                 "Invalid WebSocketTransport State")
-        
-        '''try:
-            if self.TL_STATE_CONNECTED == self.state:
-                message = await self.ws_protocol.recv()
-            else:
-                raise wste.WebSocketTransportException(
-                    "Cannot listen on WebSocket when not connected!",
-                    "Invalid WebSocketTransport State")
-        except ws.exceptions.ConnectionClosed:
-            print ("Connection was closed.")
-            raise wste.WebSocketTransportException(
-                "Cannot send on WebSocket when not connected!",
-                "Invalid WebSocketTransport State")'''
         return message
 
     async def send(self, message):
-        """Sends messages over the WebSocket protocol
+        """Sends messages to the server over WebSocket
         Parameters
         ----------
         message : str

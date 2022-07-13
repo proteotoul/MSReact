@@ -16,6 +16,9 @@ from concurrent.futures import ProcessPoolExecutor
 import asyncio
 
 class AcqMsgIDs(Enum):
+    """
+    Enum of acquisition message ids
+    """
     SCAN = 1
     REQUEST_SCAN = 2
     FETCH_RECEIVED_SCAN = 3
@@ -27,6 +30,9 @@ class AcqMsgIDs(Enum):
     ERROR = 9
     
 class AcquisitionStatusIds(Enum):
+    """
+    Enum of acquisition status ids
+    """
     ACQUISITION_IDLE = 1
     ACQUISITION_PRE_ACQUISITION = 2
     ACQUISITION_RUNNING = 3
@@ -37,8 +43,70 @@ class AcquisitionStatusIds(Enum):
 DEFAULT_NAME = "Default Acquisition"
 
 class Acquisition:
-    def __init__(self, queue_in, queue_out):
+    """
+    Base class for mass spectrometer acquisitions, implementing several methods
+    to ease the development of new acquisition methods.
+
+    ...
+
+    Attributes
+    ----------
+    queue_in : queue.Queue
+       Input queue through which the acquisition receives messages from the 
+       algorithm runner
+    queue_out : queue.Queue
+       Output queue through which the acquisition can send messages to the 
+       algorithm runner
+        
+    Methods
+    -------
+    fetch_received_scan()
+        Try to fetch a scan from the received scans queue. If the queue is 
+        empty it returns None
+    signal_ready_for_acquisition()
+        Signals to the algorithm runner, that the acquisition is finished with
+        the pre-acquisition steps and ready for the start of the acquisition 
+        method
+    request_acquisition_stop()
+        Requests from the algorithm runner to stop the acquisition
+    request_custom_scan(request)
+        Requests a custom scan with the given parameters
+    request_repeating_scan(request)
+        Request a repeating scan with the given parameters
+    cancel_repeating_scan(request)
+        Cancel a repeating scan with the given parameters
+    signal_error_to_runner(error_msg)
+        Signal error to the algorithm runner
+    get_acquisition_status()
+        Get the status of the current acqusition
+    update_acquisition_status(new_status)
+        Update the acquisition status to the given status
+    wait_for_end_or_error()
+        Wait until the acquisition ends or until an error occurs
+    pre_acquisition()
+        Abstract method to be overriden with steps to execute before an
+        acquisition
+    intra_acquisition()
+        Abstract method to be overriden with steps to execute during an
+        acquisition
+    post_acquisition()
+        Abstract method to be overriden with steps to execute after an
+        acquisition
     
+    """
+
+
+    def __init__(self, queue_in, queue_out):
+        """
+        Parameters
+        ----------
+        queue_in : queue.Queue
+           Input queue through which the acquisition receives messages from the 
+           algorithm runner
+        queue_out : queue.Queue
+           Output queue through which the acquisition can send messages to the 
+           algorithm runner
+        """
         self.name = DEFAULT_NAME
         
         self.queue_in = queue_in
@@ -57,6 +125,12 @@ class Acquisition:
         self.logger = logging.getLogger(__name__)
         
     def fetch_received_scan(self):
+        """Try to fetch a scan from the received scans queue. If the queue is 
+        empty it returns None
+        
+        Returns:
+            dict: Scan in the form of a dictionary
+        """
         scan = None
         try:
             scan = self.scan_queue.get_nowait()
@@ -65,35 +139,78 @@ class Acquisition:
         return scan
         
     def signal_ready_for_acquisition(self):
+        """Signals to the algorithm runner, that the acquisition is finished with
+        the pre-acquisition steps and ready for the start of the acquisition 
+        method"""
+    
         # if it's listening workflow, then this should do nothing
         self.queue_out.put((AcqMsgIDs.READY_FOR_ACQUISITION_START, 
                             self.settings))
                             
     def request_acquisition_stop(self):
+        """Requests from the algorithm runner to stop the acquisition"""
         self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_STOP, None))
         
     def request_custom_scan(self, request):
+        """Requests a custom scan with the given parameters
+        Parameters
+        ----------
+        request : dict
+            Custom scan request parameters organised into a string-string 
+            dictionary in the form of parameter_name : value, eg. 
+            "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
         
     def request_repeating_scan(self, request):
+        """Request a repeating scan with the given parameters
+        Parameters
+        ----------
+        request : dict
+            Repeating scan request parameters organised into a string-string 
+            dictionary in the form of parameter_name : value, eg. 
+            "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.REQUEST_REPEATING_SCAN, request))
         
     def cancel_repeating_scan(self, request):
+        """Cancel a repeating scan with the given parameters
+        Parameters
+        ----------
+        request : dict
+            Repeating scan request parameters to cancel organised into a
+            string-string dictionary in the form of parameter_name : value, eg. 
+            "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.CANCEL_REPEATING_SCAN, request))
         
     def signal_error_to_runner(self, error_msg):
+        """Signal error to the algorithm runner
+        Parameters
+        ----------
+        error_msg : str
+            Error message to be forwarded to the algorithm runner """
         self.queue_out.put((AcqMsgIDs.ERROR, error_msg))
         
     def get_acquisition_status(self):
+        """Get the status of the current acqusition
+        
+        Returns:
+            AcquisitionStatusIds: The current status of the acquisition
+        """
         with self.status_lock:
             status = self.acquisition_status
         return status
+        
     def update_acquisition_status(self, new_status):
+        """Update the acquisition status to the given status
+        Parameters
+        ----------
+        new_status : AcquisitionStatusIds
+            New status to update the current status to"""
         # TODO - check if the new_status is valid element of the Enum
         with self.status_lock:
             self.acquisition_status = new_status
         
     def wait_for_end_or_error(self):
+        """Wait until the acquisition ends or until an error occurs"""
         while True:
             try:
                 cmd, payload = self.queue_in.get_nowait()
@@ -113,30 +230,40 @@ class Acquisition:
         
     @abstractmethod
     def pre_acquisition(self):
+        """Abstract method to be overriden with steps to execute before an
+            acquisition"""
         pass
         
     @abstractmethod
     def intra_acquisition(self):
+        """Abstract method to be overriden with steps to execute during an
+           acquisition"""
         pass
         
     @abstractmethod
     def post_acquisition(self):
-        pass
-        
-        
-class TestAcquisition(Acquisition):
-    def pre_acquisition(self):
-        pass
-        
-    def intra_acquisition(self):
-        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
-            time.sleep(0.3)
-            print("not yet finished so go back to sleep")
-        
-    def post_acquisition(self):
+        """Abstract method to be overriden with steps to execute after an
+           acquisition"""
         pass
         
 def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
+    """This method is responsible for executing the pre-, intra- and 
+       post-acquisition steps. The method is ran in a separate proccess.
+
+    Parameters
+    ----------
+    module_name : str
+        Name of the module from which the acquisition class will be imported.
+    acquisition_name : str
+        Name of the acquisition class to be executed by the acquisition_process.
+    queue_in : queue.Queue
+       Input queue through which the acquisition receives messages from the 
+       algorithm runner
+    queue_out : queue.Queue
+       Output queue through which the acquisition can send messages to the 
+       algorithm runner
+    """
+
     module = importlib.import_module(module_name)
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
@@ -169,33 +296,3 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     # TODO: For now, it is the user's responsibility to check whether an error occured during
     #       the acquisition and decide what kind of activities to carry out in each case.
     acquisition.post_acquisition()
-    
-async def test_run_acq():
-    queue_in = multiprocessing.Manager().Queue()
-    queue_out = multiprocessing.Manager().Queue()
-    
-    name = TestAcquisition.__name__
-    module = inspect.getmodule(TestAcquisition)
-    
-    print(name)
-    print(module)
-    
-    executor = ProcessPoolExecutor()
-    loop = asyncio.get_running_loop()
-    task = loop.run_in_executor(executor,
-                                acquisition_process,
-                                TestAcquisition.__module__,
-                                TestAcquisition.__name__, 
-                                queue_in, queue_out)
-    
-    await asyncio.gather(task, test_stop_acq(queue_in))
-                               
-async def test_stop_acq(queue_in):
-    for i in range(5):
-        await asyncio.sleep(1)
-        print(f"Cycle {i} is done")
-    queue_in.put((AcqMsgIDs.ACQUISITION_ENDED, None))
-    
-
-if __name__ == "__main__":
-    asyncio.run(test_run_acq())
