@@ -13,25 +13,110 @@ class InstrMsgIDs(Enum):
     ERROR = 3
 
 class InstrumentServerManager:
-    '''
-    Parameters
+    """
+    This module is responsible for managing the instrument server through the 
+    protocol. 
+
+    ...
+
+    Attributes
     ----------
+    protocol: ProtocolLayer
+        Protocol to use for the communication with the server
+    app_cb : func
+        Callback function to forward messages to the application from the 
+        InstrumentServerManager
+        
+    Methods
+    -------
+    connect_to_server:
+        Connects to server with a given address.
+    disconnect_from_server:
+        Disconnects from the server to which the client is currently connected.
+    get_protocol_version:
+        Retrieves the protocol version of the server that is currently connected
+        to the client.
+    get_server_version:
+        Retreives the software version of the server that is currently connected
+        to the client.
+    get_available_instruments:
+        Retreives the list of available instruments from the server.
+    get_instrument_info:
+        Retreives information about a selected instrument.
+    get_instrument_state:
+        Retreives the state of a selected instrument.
+    select_instrument:
+        Selects instrument to run acquisition/algorithm on.
+    get_possible_params:
+        Retreives possible parameters that can be used for requesting scans from
+        an instrument.
+    request_scan:
+        Requests custom scan from the previously selected instrument with the
+        given parameters.
+    cancel_custom_scan:
+        Cancels the previously requested custom scan.
+    request_repeating_scan:
+        Requests a custom scan that is being acquired repeateadly by the
+        instrument until the repeating scan request is cancelled.
+    cancel_repeating_scan:
+        Cancels the previously requested repeating scan.
+    subscribe_to_scans:
+        Subscribes to scans on the selected instrument, i.e. the server will 
+        transmit the scans acquired by the instrument to the client.
+    unsubscribe_from_scans:
+        Unsubscribes from scans on the selected instrument, i.e. the server will
+        stop transmitting the scans acquired by the instrument to the client.
+    configure_acquisition:
+        Configures acquisition with a given set of parameters.
+    start_acquisition:
+        Requests the start of an acquisition from server.
+    stop_acquisition:
+        Requests the stop of the current acquisition from server.
+    listen_for_messages:
+        Listens for messages from the server.
     
-    '''
+    """
     
-    def __init__(self, protocol, app_cb, loop):
+    def __init__(self, protocol, app_cb): 
+        """
+        Parameters
+        ----------
+        protocol: ProtocolLayer
+            Protocol to use for the communication with the server.
+        app_cb : func
+            Callback function to forward messages to the application from the 
+            InstrumentServerManager.
+        """
+        
+        # Store inputs
         self.proto = protocol
+        self.app_cb = app_cb
+        
+        # Initialise address and synchronisation components
         self.address = None
         self.acq_running = False
         self.acq_lock = asyncio.Lock()
         self.resp_cond = asyncio.Condition()
         self.resp = None
-        self.logger = logging.getLogger(__name__)
-        self.app_cb = app_cb
         
-        self.loop = loop
+        # Initialise logger
+        self.logger = logging.getLogger(__name__)
+        
         
     async def connect_to_server(self, address = None):
+        """Connects to server with a given address.
+
+        Parameters
+        ----------
+        address : str
+            IP address of the server to connect to eg. "172.18.160.1".
+
+        Returns
+        -------
+        bool
+            True if the connection was successful and False if it failed.
+        """
+    
         success = False
         
         if address is not None:
@@ -43,14 +128,24 @@ class InstrumentServerManager:
         return success
         
     async def disconnect_from_server():
+        """ Disconnects from the server to which the client is currently 
+        connected. """
         self.address = None
         await self.proto.tl.disconnect()
         
     async def get_protocol_version(self):
+        """Retrieves the protocol version of the server that is currently 
+        connected to the client.
+
+        Returns
+        -------
+        str
+            The protocol version of the server.
+        """
         self.logger.info('Getting protocol version')
 
         await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_PROTO_VER_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.SERVER_PROTO_VER_RSP == msg):
             self.logger.info(f'Received protocol version: {payload}')
         else:
@@ -59,10 +154,18 @@ class InstrumentServerManager:
         return payload
         
     async def get_server_version(self):
+        """Retreives the software version of the server that is currently 
+        connected to the client.
+
+        Returns
+        -------
+        str
+            The software version of the server.
+        """
         self.logger.info('Getting server software version')
         
         await self.proto.send_message(self.proto.MessageIDs.GET_SERVER_SW_VER_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.SERVER_SW_VER_RSP == msg):
             self.logger.info(f'Received server software version: {payload}')
         else:
@@ -70,22 +173,43 @@ class InstrumentServerManager:
         return payload
         
     async def get_available_instruments(self):
+        """Retreives the list of available instruments from the server.
+
+        Returns
+        -------
+        list
+            The list of available instruments.
+        """
         self.logger.info('Getting available instruments')
         
         await self.proto.send_message(self.proto.MessageIDs.GET_AVAILABLE_INSTR_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
+            # TODO: Process the payload into a list.
             self.logger.info(f'Available instruments: {payload}')
         else:
             pass
         return payload
         
     async def get_instrument_info(self, instrument):
+        """Retreives information about a selected instrument.
+
+        Parameters
+        ----------
+        instrument : int
+            The id of the instrument.
+            
+        Returns
+        -------
+        str
+            Information about the selected instrument.
+        """
+    
         self.logger.info(f'Requesting info about instrument {instrument}')
         
         await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_INFO_CMD,
                                       instrument)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
             self.logger.info(f'Instrument info:\n{payload}')
         else:
@@ -93,11 +217,24 @@ class InstrumentServerManager:
         return payload
         
     async def get_instrument_state(self, instrument):
+        """Retreives the state of a selected instrument.
+
+        Parameters
+        ----------
+        instrument : int
+            The id of the instrument.
+            
+        Returns
+        -------
+        str
+            State of the selected instrument.
+        """
+    
         self.logger.info(f'Get instrument state of instrument: {instrument}')
         
         await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_STATE_CMD,
                                       instrument)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.INSTR_STATE_RSP == msg):
             self.logger.info(f'Instrument state:\n{payload}')
         else:
@@ -105,18 +242,35 @@ class InstrumentServerManager:
         return payload
         
     async def select_instrument(self, instrument):
+        """Selects instrument to run acquisition/algorithm on.
+
+        Parameters
+        ----------
+        instrument : int
+            The id of the instrument.
+            
+        """
         self.logger.info('Selecting instrument.')
         await self.proto.send_message(self.proto.MessageIDs.SELECT_INSTR_CMD,
                                       instrument)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with instrument selection.")
             raise Exception("Problem with instrument selection.")
         
     async def get_possible_params(self):
+        """Retreives possible parameters that can be used for requesting scans 
+        from an instrument.
+
+        Returns
+        -------
+        list
+            List of possible parameters where each item in the list is a 
+            dictionary with keys: "Name", "Selection", "DefaultValue" "Help".
+        """
         self.logger.info('Getting possible parameters for requesting scans...')
         await self.proto.send_message(self.proto.MessageIDs.GET_POSSIBLE_PARAMS_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.POSSIBLE_PARAMS_RSP != msg):
             # TODO - raise exception
             self.logger.error("Response was not POSSIBLE_PARAMS message.")
@@ -133,6 +287,17 @@ class InstrumentServerManager:
         return payload
         
     async def request_scan(self, parameters):
+        """Requests custom scan from the previously selected instrument with the
+           given parameters.
+
+        Parameters
+        ----------
+        parameters : dict
+            String-string dictionary of parameters, where a given key has to be
+            one of the names of the possible parameters. 
+            See :func:`~instrument_server_manager.InstrumentServerManager.get_possible_params`.
+            
+        """
         #self.logger.info(f'Requesting scans with the following parameters:\n{parameters}')
         await self.proto.send_message(self.proto.MessageIDs.REQ_CUSTOM_SCAN_CMD,
                                       parameters)
@@ -142,64 +307,97 @@ class InstrumentServerManager:
         #    raise Exception("Problem with custom scan request.")
         
     async def cancel_custom_scan(self):
+        """Cancels the previously requested custom scan."""
         await self.proto.send_message(self.proto.MessageIDs.CANCEL_CUSTOM_SCAN_CMD)
         
     async def request_repeating_scan(self, parameters):
+        """Requests a custom scan that is being acquired repeateadly by the
+           instrument until the repeating scan request is cancelled.
+
+        Parameters
+        ----------
+        parameters : dict
+            String-string dictionary of parameters, where a given key has to be
+            one of the names of the possible parameters. 
+            See :func:`~instrument_server_manager.InstrumentServerManager.get_possible_params`.
+            
+        """
         await self.proto.send_message(self.proto.MessageIDs.SET_REPEATING_SCAN_CMD,
                                       parameters)
                                       
     async def cancel_repeating_scan(self):
+        """Cancels the previously requested repeating scan."""
         await self.proto.send_message(self.proto.MessageIDs.CLEAR_REPEATING_SCAN_CMD)
         
     async def subscribe_to_scans(self):
+        """Subscribes to scans on the selected instrument, i.e. the server will 
+        transmit the scans acquired by the instrument to the client."""
         self.logger.info('Subscribing for scans.')
         await self.proto.send_message(self.proto.MessageIDs.SUBSCRIBE_TO_SCANS_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with subscribing to scans.")
             raise Exception("Problem with subscribing to scans.")
     
     async def unsubscribe_from_scans(self):
+        """Unsubscribes from scans on the selected instrument, i.e. the server will
+        stop transmitting the scans acquired by the instrument to the client."""
         self.logger.info('Unsubscribing from scans.')
         await self.proto.send_message(self.proto.MessageIDs.UNSUBSCRIBE_FROM_SCANS_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with unsubscribing from scans.")
             raise Exception("Problem with unsubscribing from scans.")
         
     async def configure_acquisition(self, config):
+        """Configures acquisition with a given set of parameters.
+
+        Parameters
+        ----------
+        parameters : dict
+            String-string dictionary of parameters:
+            "AcquisitionType" : TODO - Link to reference
+            "AcquisitionParam" : TODO - Link to reference
+            "RawFileName" : TODO - Link to reference
+            "SampleName" : TODO - Link to reference
+            "Comment" : TODO - Link to reference
+            "SingleProcessingDelay" : TODO - Link to reference
+            "WaitForContactClosure" : TODO - Link to reference"""
         self.logger.info('Configure the acquisition')
         await self.proto.send_message(self.proto.MessageIDs.CONFIG_ACQ_CMD, config)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with configuring acquisition.")
             raise Exception("Problem with configuring acquisition.")
         
     async def start_acquisition(self):
+        """Requests the start of an acquisition from server."""
         self.logger.info('Start transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.START_ACQ_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with starting acquisition.")
             raise Exception("Problem with starting acquisition.")
             
     async def stop_acquisition(self):
+        """Requests the stop of the current acquisition from server."""
         self.logger.info('Stop transferring scans from the raw file by the mock')
         await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ_CMD)
-        msg, payload = await self.wait_for_response()
+        msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with stopping acquisition.")
             raise Exception("Problem with stopping acquisition.")
         
     async def listen_for_messages(self):
+        """Listens for messages from the server."""
         self.listening = True
         self.logger.info('Listening for messages started.')
         while self.listening:
             msg, payload = await self.proto.receive_message()
-            await self.dispatch_message(msg, payload)
+            await self.__dispatch_message(msg, payload)
         self.logger.info('Exited listening for messages loop.')
     
-    async def dispatch_message(self, msg, payload):
+    async def __dispatch_message(self, msg, payload):
         msg_type = msg.name[-3:]
         if ('RSP' == msg_type):
             async with self.resp_cond:
@@ -218,25 +416,8 @@ class InstrumentServerManager:
             pass
             
             # That is an error situation
-    
-    async def submit_message(self, msg, expected_rsp):
-        payload = None
-        await self.proto.send_message(msg)
-        if expected_rsp is not None:
-            received_rsp, payload = await self.wait_for_response()
-            if (received_rsp != expected_rsp):
-                error_msg = (f'Problem with sending message: {msg.name}. ' +
-                            f'Expected response: {excpected_rsp.name}, ' +
-                            f'received response: {received_rsp.name}.')
-                self.logger.error(error_msg)
-                raise Exception(error_msg)
-        return payload
-            
-    def acquisition_finished(self):
-        # Do all actions related to acquisition finishing
-        pass
         
-    async def wait_for_response(self):
+    async def __wait_for_response(self):
         async with self.resp_cond:
             await self.resp_cond.wait()
             received_resp, resp_payload = self.resp

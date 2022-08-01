@@ -13,8 +13,7 @@ class CustomTest:
         
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
-                                    self.instrument_server_manager_cb,
-                                    loop)
+                                    self.instrument_server_manager_cb)
         self.logger = logging.getLogger(__name__)
         
     @abstractmethod

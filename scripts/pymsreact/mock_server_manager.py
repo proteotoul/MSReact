@@ -13,11 +13,10 @@ class MockServerManager(InstrumentServerManager):
 
     def __init__(self, 
                  protocol,
-                 app_cb,
-                 loop):
+                 app_cb):
         self.raw_file_list = None
         self.scan_interval = None
-        super().__init__(protocol, app_cb, loop)
+        super().__init__(protocol, app_cb)
         self.logger = logging.getLogger(__name__)
         # Continue updating MockServerManager so it is implementing a full
         # instrument controller too

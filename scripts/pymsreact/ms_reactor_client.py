@@ -144,8 +144,7 @@ class MSReactorClient:
         # Init the instrument server manager
         self.inst_serv_man = \
             InstrumentServerManager(self.protocol,
-                                    self.instrument_server_manager_cb,
-                                    loop)
+                                    self.instrument_server_manager_cb)
 
         self.logger.info(f'Instrument address: {args.address}')
         success = await self.inst_serv_man.connect_to_server(args.address)
@@ -225,8 +224,7 @@ class MSReactorClient:
             # Init the instrument server manager
             self.inst_serv_man = \
                 InstrumentServerManager(self.protocol,
-                                        self.instrument_server_manager_cb,
-                                        loop)
+                                        self.instrument_server_manager_cb)
 
             self.logger.info(f'Instrument address: {args.address}')
             success = await self.inst_serv_man.connect_to_server(args.address)
