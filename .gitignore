@@ -396,4 +396,7 @@ scripts/python/python
 scripts/python/thermomock-env/
 scripts/python/ProteomicsDev
 
-
+# Client documentation 
+scripts/pymsreact/docs/build
+scripts/pymsreact/docs/source/_templates
+scripts/pymsreact/docs/source/_static
