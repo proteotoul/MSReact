@@ -79,7 +79,7 @@ class Acquisition:
         self.scan_queue = queue.Queue()
         self.status_lock = threading.Lock()
         
-        self.instrument = msi.MassSpectrometerInstrument()
+        self.instrument = MassSpectrometerInstrument()
         self.settings = acqs.AcquisitionSettings()
         self.status = AcquisitionStatusIds.ACQUISITION_IDLE
         
