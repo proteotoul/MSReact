@@ -1,16 +1,15 @@
 import asyncio
 import websockets as ws
-import ws_transport_exception as wste
-from protocol import Protocol
-from transport_layer import TransportLayer
-from ws_transport import WebSocketTransport
+from msrp import MSReactProtocol
+from base import BaseTransport
+from websocket import WebSocketTransport
 
 async def main():
     uri = f'ws://localhost:4649/SWSS'
     custom_scan = {"Precursor_mz" : "753.8076782226562"}
     
     async with WebSocketTransport(uri) as ws_transport:
-        protocol = Protocol(ws_transport)
+        protocol = MSReactProtocol(ws_transport)
         
         # Get possible parameters
         await protocol.send_message(protocol.MessageIDs.GET_POSSIBLE_PARAMS)
