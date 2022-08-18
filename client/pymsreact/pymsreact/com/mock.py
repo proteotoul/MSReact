@@ -6,6 +6,22 @@ from subprocess import Popen, CREATE_NEW_CONSOLE
 from .instrument import InstrumentClient
 
 class MockClient(InstrumentClient):
+    '''
+    This module is responsible for creating and managing a mock server through 
+    the protocol. 
+
+    ...
+
+    Attributes
+    ----------
+    protocol: BaseProtocol
+        Protocol to use for the communication with the server
+        
+    app_cb : func
+        Callback function to forward messages to the application from the 
+        InstrumentClient
+    
+    '''
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
     DEFAULT_RAW_FILE_LIST = ["D:\\dev\\ms-reactor\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
     DEFAULT_SCAN_INTERVAL = 1
@@ -14,6 +30,16 @@ class MockClient(InstrumentClient):
     def __init__(self, 
                  protocol,
                  app_cb):
+        """
+        Parameters
+        ----------
+        protocol: BaseProtocol
+            Protocol to use for the communication with the server.
+        app_cb : func
+            Callback function to forward messages to the application from the 
+            InstrumentClient.
+        """         
+                 
         self.raw_file_list = None
         self.scan_interval = None
         super().__init__(protocol, app_cb)
@@ -24,7 +50,17 @@ class MockClient(InstrumentClient):
     def create_mock_server(self,
                            raw_file_list = DEFAULT_RAW_FILE_LIST,
                            scan_interval = DEFAULT_SCAN_INTERVAL):
-                           
+        """Creates a mock server with the given parameters.
+
+        Parameters
+        ----------
+        raw_file_list : list
+            List of strings with the full path and name of the raw files to
+            "replayed" by the mock.
+        scan_interval : int
+            Interval in milliseconds between two transmitted scans from the 
+            mock server.
+        """
         self.raw_file_list = raw_file_list
         self.scan_interval = scan_interval
         
@@ -34,6 +70,8 @@ class MockClient(InstrumentClient):
         self.mock_proc = Popen(msg, creationflags=CREATE_NEW_CONSOLE)
         
     def terminate_mock_server(self):
+        """Terminates the mock server. Note: This shuts down the process that 
+           runs the mock server."""
         self.raw_file_list = None
         self.scan_interval = None
     
@@ -48,6 +86,18 @@ class MockClient(InstrumentClient):
                                  'Please close the Mock server window.')
     
     async def set_ms_scan_tx_level(self, scan_level_range):
+        """Requests the mock server to send only ms scans that are within the 
+           given scan_level_range.
+
+        Parameters
+        ----------
+        scan_level_range : list
+            List of integers. The mock server will transfer scans from the raw 
+            file that are within the scan level range. E.g.: If scan_level_range
+            is [1,2], the mock server will transfer scans that are MS1 and MS2. 
+            If the scan_level_range is [1,1] the mock server will transfer only
+            MS1 scans to the client.
+        """
         if scan_level_range[0] <= scan_level_range[1]:
             if scan_level_range[0] != scan_level_range[1]:
                 self.logger.info('Setting ms scan transfer level to between ' 
@@ -58,11 +108,7 @@ class MockClient(InstrumentClient):
                                           scan_level_range)
     
     async def request_shut_down_server(self):
+        """Requests to shut down the mock server by transmitting a shut down 
+           request to the mock."""
         self.logger.info('Shutting down mock server')
         await self.proto.send_message(self.proto.MessageIDs.SHUT_DOWN_MOCK_SERVER_CMD)
-
-if __name__ == "__main__":
-    mock_client = MockClient()
-    mock_client.create_mock_server()
-    time.sleep(5)
-    mock_client.terminate_mock_server()

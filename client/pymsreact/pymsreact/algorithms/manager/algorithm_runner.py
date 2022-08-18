@@ -22,28 +22,6 @@ class AlgorithmManager:
     app_cb : func
         Callback function to forward messages to the application from the 
         AlgorithmManager
-        
-    Methods
-    -------
-    select_algorithm:
-        Method to select the algorithm to run.
-    acquisition_ended:
-        Method to signal to the algorithm that the instrument 
-        finished with the acquisition.
-    deliver_scan:
-        Method to forward scans received from the instrument to the algorithm.
-    instrument_error:
-        Method to signal to the algorithm that the other parts of the client or
-        the server encountered an error.
-    run_algorithm:
-        Method with which the application can start running the selected 
-        algorithm.
-    __execute_algorithm:
-        Private method, runs the acquisitions in sequence within an algorithm.
-    __process_acquisition_requests:
-        Private method, listens to requests from the acquisitions and forwards
-        them to the application.
-    
     
     """
    
@@ -77,10 +55,37 @@ class AlgorithmManager:
         self.discover_algorithms()
         
     def get_algorithm_names(self, algo_type):
+        """Collects the algorithm names for a given algorithm type
+
+        Parameters
+        ----------
+        algo_type : str
+            The type of algorithms for which the names are necessary to be 
+            retreived. These are currently "releases" and "prototypes".
+
+        Returns
+        -------
+        list
+            List of strings containing the names of the algorithms of the given
+            type.
+        """
         return [Algorithm.ALGORITHM_NAME 
                 for Algorithm in self.ALGO_LISTS[algo_type]]
         
     def find_by_name(self, name):
+        """Retreive an algorithm with a given name
+
+        Parameters
+        ----------
+        name : str
+            The name of the algorithm to retreive.
+
+        Returns
+        -------
+        Algorithm
+            Returns an algorithm class if the algorithm is found by name, 
+            otherwise it returns None.
+        """      
         found_algorithm = False
          
         for key in self.ALGO_LISTS:
@@ -93,7 +98,9 @@ class AlgorithmManager:
             return None
             
     def discover_algorithms(self):
-        current_dir = os.getcwd() + '\\algorithms'
+        """Search through the algorithms folder for algorithms and store them
+           based on which subfolder they were found in."""
+        current_dir = os.getcwd() + '\\pymsreact\\algorithms'
         module_infos = pkgutil.iter_modules([current_dir])
         for info in module_infos:
             if info.ispkg:

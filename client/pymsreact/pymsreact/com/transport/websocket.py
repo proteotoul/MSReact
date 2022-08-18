@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import socket
-from .base import BaseTransport
+from .base import BaseTransport, TransportStates
 import websockets as ws
 
 class WebSocketTransport(BaseTransport):
@@ -16,16 +16,6 @@ class WebSocketTransport(BaseTransport):
     address : str
        IP address of the server to connect to eg. "172.18.160.1"
         
-    Methods
-    -------
-    connect(address)
-        Connects to a server with a given address using WebSocket protocol
-    disconnect()
-        Disconnects from the server
-    receive()
-        Listens for messages over WebSocket
-    send(message)
-        Sends messages over WebSocket
     """
     
     # Default port, service name and uri for websocket connections
@@ -45,7 +35,7 @@ class WebSocketTransport(BaseTransport):
         # set state to disconnected.
         self.uri = self.__address_from_uri(address)
         self.ws_protocol = None
-        self.state = self.TL_STATE_DISCONNECTED
+        self.state = TransportStates.DISCONNECTED
         
         # Set the logging level to WARNING to avoid unnecessery logs coming out
         # from the websockets module
@@ -87,14 +77,14 @@ class WebSocketTransport(BaseTransport):
         """
         success = False
         
-        if self.TL_STATE_DISCONNECTED == self.state:
+        if TransportStates.DISCONNECTED == self.state:
             self.uri = self.__address_from_uri(address)
             self.logger.info(f'Uri: {self.uri}')
             try:
                 # Revisit if not having maximum size can cause security issues
                 self.ws_protocol = await ws.connect(uri=self.uri, 
                                                     max_size = None)
-                self.state = self.TL_STATE_CONNECTED
+                self.state = TransportStates.CONNECTED
                 success = True
             except ConnectionRefusedError as crf:
                 self.logger.error("The remote computer refused the network connection.")
@@ -107,9 +97,9 @@ class WebSocketTransport(BaseTransport):
 
     async def disconnect(self):
         """Disconnects from a server"""
-        if self.state != self.TL_STATE_DISCONNECTED:
+        if self.state != TransportStates.DISCONNECTED:
             await self.ws_protocol.close()
-            self.state = self.TL_STATE_DISCONNECTED
+            self.state = TransportStates.DISCONNECTED
         else:
             raise WebSocketTransportException(
                 "Cannot disconnect from uri when already disconnected!", 
@@ -119,7 +109,7 @@ class WebSocketTransport(BaseTransport):
         """Listens for messages from the connected server over WebSocket"""
         message = ""
         
-        if self.TL_STATE_CONNECTED == self.state:
+        if TransportStates.CONNECTED == self.state:
                 message = await self.ws_protocol.recv()
         else:
             raise WebSocketTransportException(
@@ -134,7 +124,7 @@ class WebSocketTransport(BaseTransport):
         message : str
             Message to transport through the WebSocket
         """
-        if self.TL_STATE_CONNECTED == self.state:
+        if TransportStates.CONNECTED == self.state:
             await self.ws_protocol.send(message)
         else:
             raise WebSocketTransportException(

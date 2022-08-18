@@ -1,7 +1,5 @@
-pymsreact namespace
-===================
-
-.. py:module:: pymsreact
+pymsreact package
+=================
 
 Subpackages
 -----------
@@ -9,8 +7,8 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   pymsreact.algorithm_manager
-   pymsreact.server_manager
+   pymsreact.algorithms
+   pymsreact.com
 
 Submodules
 ----------
@@ -19,6 +17,14 @@ pymsreact.conc\_test module
 ---------------------------
 
 .. automodule:: pymsreact.conc_test
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pymsreact.dsso\_algorithm module
+--------------------------------
+
+.. automodule:: pymsreact.dsso_algorithm
    :members:
    :undoc-members:
    :show-inheritance:
@@ -39,6 +45,14 @@ pymsreact.multiple\_connections\_test module
    :undoc-members:
    :show-inheritance:
 
+pymsreact.test\_discovery module
+--------------------------------
+
+.. automodule:: pymsreact.test_discovery
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pymsreact.thermo\_mock\_test module
 -----------------------------------
 
@@ -51,6 +65,14 @@ pymsreact.ws\_example module
 ----------------------------
 
 .. automodule:: pymsreact.ws_example
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: pymsreact
    :members:
    :undoc-members:
    :show-inheritance:

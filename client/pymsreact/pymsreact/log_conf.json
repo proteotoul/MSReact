@@ -19,7 +19,7 @@
       "maxBytes": 5242880,
       "backupCount": 3,
       "formatter": "msReactorFormatter",
-      "filename": "log/log.log",
+      "filename": "pymsreact/log/log.log",
       "mode": "w",
       "encoding": "utf-8"
     }

@@ -29,7 +29,7 @@ class AcqMsgIDs(Enum):
     ACQUISITION_ENDED = 8
     ERROR = 9
     
-class AcquisitionStatusIds(Enum):
+class AcqStatIDs(Enum):
     """
     Enum of acquisition status ids
     """
@@ -81,11 +81,11 @@ class Acquisition:
         
         self.instrument = MassSpectrometerInstrument()
         self.settings = acqs.AcquisitionSettings()
-        self.status = AcquisitionStatusIds.ACQUISITION_IDLE
+        self.status = AcqStatIDs.ACQUISITION_IDLE
         
         # Since the acquisition objects are instantiated in separate processes,
         # logging needs to be initialized again
-        with open("log_conf.json", "r", encoding="utf-8") as fd:
+        with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
             logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
         
@@ -104,9 +104,9 @@ class Acquisition:
         return scan
         
     def signal_ready_for_acquisition(self):
-        """Signals to the algorithm runner, that the acquisition is finished with
-        the pre-acquisition steps and ready for the start of the acquisition 
-        method"""
+        """Signals to the algorithm runner, that the acquisition is finished 
+        with the pre-acquisition steps and ready for the start of the
+        acquisition method"""
     
         # if it's listening workflow, then this should do nothing
         self.queue_out.put((AcqMsgIDs.READY_FOR_ACQUISITION_START, 
@@ -158,7 +158,7 @@ class Acquisition:
         """Get the status of the current acqusition
         
         Returns:
-            AcquisitionStatusIds: The current status of the acquisition
+            AcqStatIDs: The current status of the acquisition
         """
         with self.status_lock:
             status = self.acquisition_status
@@ -168,7 +168,7 @@ class Acquisition:
         """Update the acquisition status to the given status
         Parameters
         ----------
-        new_status : AcquisitionStatusIds
+        new_status : AcqStatIDs
             New status to update the current status to"""
         # TODO - check if the new_status is valid element of the Enum
         with self.status_lock:
@@ -185,10 +185,10 @@ class Acquisition:
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
-                self.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_ENDED_NORMAL)
+                self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
                 break
             elif AcqMsgIDs.ERROR == cmd:
-                self.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_ENDED_ERROR)
+                self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_ERROR)
                 break
             else:
                 pass
@@ -234,7 +234,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     acquisition = class_(queue_in, queue_out)
     
     acquisition.logger.info('Running pre acquisition.')
-    acquisition.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_PRE_ACQUISITION)
+    acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()
     
     # Prepare intra-acquisition activities to be ran in a thread
@@ -244,7 +244,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
         threading.Thread(name='intra_acquisition_thread',
                          target=acquisition.intra_acquisition,
                          daemon=True)
-    acquisition.update_acquisition_status(AcquisitionStatusIds.ACQUISITION_RUNNING)
+    acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_RUNNING)
     # TODO: The start of the intra acquisition thread could be done before or after
     # the signaling to the client. Should be decided. Possible synchronisation of start
     # could be considered.

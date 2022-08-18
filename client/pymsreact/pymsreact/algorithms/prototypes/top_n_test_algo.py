@@ -1,6 +1,6 @@
 from algorithms.manager.algorithm import Algorithm
-from algorithms.manager.acquisition import Acquisition, AcquisitionStatusIds
-from algorithms.manager.ms_instruments.tribid_instrument import ThermoTribidInstrument
+from algorithms.manager.acquisition import Acquisition, AcqStatIDs
+import algorithms.manager.ms_instruments.tribrid_instrument as ti
 import algorithms.manager.acquisition_workflow as aw
 import json
 import logging
@@ -25,7 +25,7 @@ WAIT_FOR_CONTACT_CLOSURE = False
 RAW_FILE_NAME = "top_n_test.RAW"
 SAMPLE_NAME = "-"
 COMMENT = "This test is checking whether top N method " + \
-          "can be initiated and managed from MSReactor."
+          "can be initiated and managed from MSReact."
 
 MZ_TOLERANCE = 0.0001 # Tolerance for the exclusion
 NUMBER_OF_PEAKS = 15 # Number of precursors to select for MS2
@@ -35,7 +35,7 @@ class TopNAcquisition(Acquisition):
     def __init__(self, *args):
         super().__init__(*args)
         self.name = 'Test_TopN_acquisition'
-        self.instrument = ThermoTribidInstrument()
+        self.instrument = ti.ThermoTribridInstrument()
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
@@ -62,7 +62,7 @@ class TopNAcquisition(Acquisition):
         num_requests = 0
         num_received = 0
         
-        while AcquisitionStatusIds.ACQUISITION_RUNNING == self.get_acquisition_status():
+        while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
             
             if ((scan is not None) and (2 == scan["MSScanLevel"])):
@@ -143,8 +143,3 @@ class TopNTestAlgorithm(Algorithm):
         self.acquisition_sequence = [ TopNAcquisition ]
         self.logger = logging.getLogger(__name__)
         
-if __name__ == "__main__":
-    algo = TopNTestAlgorithm()
-    algo.pre_acquisition()
-    algo.intra_acquisition()
-    algo.post_acquisition()

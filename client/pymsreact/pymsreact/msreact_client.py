@@ -21,7 +21,7 @@ class MSReactClient:
     def __init__(self):
         
         # Set up logging
-        with open("log_conf.json", "r", encoding="utf-8") as fd:
+        with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
             logging.config.dictConfig(json.load(fd))
         self.logger = logging.getLogger(__name__)
         
@@ -170,7 +170,7 @@ class MSReactClient:
 
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, "Tribid"):
+            if self.algo_manager.select_algorithm(args.alg, "Tribrid"):
                 await self.algo_manager.run_algorithm()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
@@ -205,7 +205,7 @@ class MSReactClient:
             
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, "Tribid"):
+            if self.algo_manager.select_algorithm(args.alg, "Tribrid"):
                 await self.algo_manager.run_algorithm()
                 await self.inst_client.request_shut_down_server()
             else:
@@ -244,7 +244,7 @@ class MSReactClient:
                 
                 # TODO: Instrument info should be collected and provided to the 
                 #       function later.
-                if self.algo_manager.select_algorithm(args.suite, "Tribid"):
+                if self.algo_manager.select_algorithm(args.suite, "Tribrid"):
                     await self.algo_manager.run_algorithm()
                 else:
                     self.logger.error(f"Failed loading {args.suite}")
