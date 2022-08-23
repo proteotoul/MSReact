@@ -84,9 +84,17 @@ class Acquisition:
         self.status = AcqStatIDs.ACQUISITION_IDLE
         
         # Since the acquisition objects are instantiated in separate processes,
-        # logging needs to be initialized again
-        with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
-            logging.config.dictConfig(json.load(fd))
+        # logging needs to be initialized. The log messages from the acquisition
+        # are sent through the queue_out to the main process and the records are 
+        # being handled there.          
+        queue_handler = logging.handlers.QueueHandler(queue_out)
+        root = logging.getLogger()
+        # Remove the default stream handler to avoid duplicate printing
+        for handler in root.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                root.removeHandler(handler)
+        root.addHandler(queue_handler)
+        root.setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
         
     def fetch_received_scan(self):

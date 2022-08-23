@@ -7,6 +7,7 @@ import com.instrument as instrument
 import com.mock as mock
 import com.protocol.msrp as msrp
 import com.transport.websocket as wst
+from datetime import datetime
 import signal
 import time
 import traceback
@@ -21,8 +22,7 @@ class MSReactClient:
     def __init__(self):
         
         # Set up logging
-        with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
-            logging.config.dictConfig(json.load(fd))
+        logging.config.dictConfig(self.__load_dict_config())
         self.logger = logging.getLogger(__name__)
         
         # Set up async loop and process executor
@@ -251,8 +251,19 @@ class MSReactClient:
                 
             else:
                 self.logger.error("Connection Failed")
+            
+    def __load_dict_config(self):
+        config = {}
+        with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
+            config = json.load(fd)
+            config["handlers"]["file"]["filename"] = \
+                config["handlers"]["file"]["filename"] \
+                + '_' \
+                + datetime.now().strftime("%y%m%d_%H%M") \
+                + '.log'
+        return config
         
-    def custom_exception_handler(loop, context):
+    def custom_exception_handler(self, loop, context):
         # first, handle with default handler
         #loop.default_exception_handler(context)
 
@@ -260,7 +271,7 @@ class MSReactClient:
         self.logger.info(f'Caught exception: {message}')
         asyncio.create_task(self.shutdown(loop))
         
-    async def shutdown(loop, signal=None):
+    async def shutdown(self, loop, signal=None):
         """Cleanup tasks tied to the service's shutdown."""
         if signal:
             self.logger.info(f"Received exit signal {signal.name}...")

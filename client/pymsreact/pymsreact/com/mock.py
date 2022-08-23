@@ -23,9 +23,11 @@ class MockClient(InstrumentClient):
     
     '''
     DEFAULT_URI = f'ws://localhost:4649/SWSS'
-    DEFAULT_RAW_FILE_LIST = ["D:\\dev\\ms-reactor\\ThermoMock\\ThermoMockTest\\Data\\Excluded\\OFPBB210611_06.raw"]
+    DEFAULT_RAW_FILE_LIST = '\\data\\small2.raw'
     DEFAULT_SCAN_INTERVAL = 1
-    MOCK_SERVER_PATH = ['D:\\dev\\ms-reactor\\ThermoMock\\ThermoMock\\bin\\Debug\\net48\\ThermoMock.exe ']
+    # TODO - The path to the executable should be updated once the pulling of 
+    #        latest server executable is implemented.
+    MOCK_SERVER_PATH = '\\data\\mock\\net48\\MSReactServer.exe'
 
     def __init__(self, 
                  protocol,
@@ -48,7 +50,7 @@ class MockClient(InstrumentClient):
         # instrument controller too
         
     def create_mock_server(self,
-                           raw_file_list = DEFAULT_RAW_FILE_LIST,
+                           raw_file_list = None,
                            scan_interval = DEFAULT_SCAN_INTERVAL):
         """Creates a mock server with the given parameters.
 
@@ -61,10 +63,13 @@ class MockClient(InstrumentClient):
             Interval in milliseconds between two transmitted scans from the 
             mock server.
         """
-        self.raw_file_list = raw_file_list
+        curent_dir = os.getcwd()
+        self.raw_file_list = ([curent_dir + DEFAULT_RAW_FILE_LIST] 
+                              if raw_file_list is None else raw_file_list)
         self.scan_interval = scan_interval
         
-        msg = self.MOCK_SERVER_PATH + ['mock'] + \
+        mock_server_path = curent_dir + self.MOCK_SERVER_PATH
+        msg = [mock_server_path] + ['mock'] + \
               [", ".join(self.raw_file_list)] + \
               [str(self.scan_interval)]
         self.mock_proc = Popen(msg, creationflags=CREATE_NEW_CONSOLE)

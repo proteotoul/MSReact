@@ -205,10 +205,12 @@ class AlgorithmManager:
             self.logger.info(f'Process acquisition requests function entered.')
             while not self.listening.is_set():
                 try:
-                    request, args = self.acq_out_q.get_nowait()
-                    #self.logger.info(f'Got request from algorithm: {request} ' +
-                    #                 f'payload: {args}')
-                    await self.app_cb(request, args)
+                    item = self.acq_out_q.get_nowait()
+                    if isinstance(item, logging.LogRecord):
+                        logger = logging.getLogger(item.name)
+                        logger.handle(item)
+                    else:
+                        await self.app_cb(*item)
                 except Empty:
                     pass
                 await asyncio.sleep(0.01)

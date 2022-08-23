@@ -2,8 +2,11 @@
 
 import asyncio
 import msreact_client
+import pathlib
 
 def main():
+    # Create output and log folder if it doesn't exist yet
+    pathlib.Path('.\\output\\log').mkdir(parents=True, exist_ok=True)
     client = msreact_client.MSReactClient()
     args = client.parse_client_arguments()
     client.logger.info(f'Selected sub-command: {args.command}')
