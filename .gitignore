@@ -184,7 +184,7 @@ publish/
 *.azurePubxml
 # Note: Comment the next line if you want to checkin your web deploy settings,
 # but database connection strings (with potential passwords) will be unencrypted
-*.pubxml
+#*.pubxml
 *.publishproj
 
 # Microsoft Azure Web App publish settings. Comment the next line if you want to
@@ -388,12 +388,19 @@ FodyWeavers.xsd
 *.sln.iml
 
 # Data files too large to be commited
-ThermoMock/ThermoMockTest/Data/Excluded/
-scripts/data/
-scripts/default_nn_model/
-scripts/python/data/
-scripts/python/python
-scripts/python/thermomock-env/
-scripts/python/ProteomicsDev
+MSReactServer/Test/Data/Excluded
 
 
+# Client documentation 
+client/pymsreact/docs/build
+client/pymsreact/docs/source/_templates
+client/pymsreact/docs/source/_static
+
+# Servers within client
+client/pymsreact/data/mock
+
+# Visual Studio user specific information
+/MSReactServer/MSReactServer/*.user
+
+# Generated files in the output folder
+client/pymsreact/output
