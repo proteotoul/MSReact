@@ -15,6 +15,8 @@ from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
 
+import csv
+
 class AcqMsgIDs(Enum):
     """
     Enum of acquisition message ids
@@ -28,6 +30,8 @@ class AcqMsgIDs(Enum):
     REQUEST_ACQUISITION_STOP = 7
     ACQUISITION_ENDED = 8
     ERROR = 9
+    ENABLE_PLOT = 10
+    DISABLE_PLOT = 11
     
 class AcqStatIDs(Enum):
     """
@@ -97,6 +101,11 @@ class Acquisition:
         root.setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
         
+        
+        # Diagnostics
+        self.return_times = []
+        self.proc_time = None
+        
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
         empty it returns None
@@ -108,7 +117,7 @@ class Acquisition:
         try:
             scan = self.scan_queue.get_nowait()
         except queue.Empty:
-            pass
+            time.sleep(0.001)
         return scan
         
     def signal_ready_for_acquisition(self):
@@ -124,7 +133,7 @@ class Acquisition:
         """Requests from the algorithm runner to stop the acquisition"""
         self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_STOP, None))
         
-    def request_custom_scan(self, request):
+    def request_custom_scan(self, request, request_id = None):
         """Requests a custom scan with the given parameters
         Parameters
         ----------
@@ -132,7 +141,17 @@ class Acquisition:
             Custom scan request parameters organised into a string-string 
             dictionary in the form of parameter_name : value, eg. 
             "PrecursorMass" : "800.25" """
+        # TODO: Should check if the int is 64 bit length or not.
+        if ((request_id is not None) and (isinstance(request_id, int))):
+            request.update({'REQUEST_ID' : request_id})
+
         self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
+        if self.proc_time is not None:
+            diff = time.time() - self.proc_time
+            #print(f'Timing from acquisition: {diff}')
+            self.return_times.append(diff)
+            self.proc_time = None
+        
         
     def request_repeating_scan(self, request):
         """Request a repeating scan with the given parameters
@@ -188,12 +207,18 @@ class Acquisition:
             try:
                 cmd, payload = self.queue_in.get_nowait()
             except queue.Empty:
-                time.sleep(0.1)
+                time.sleep(0.001)
                 continue
             if AcqMsgIDs.SCAN == cmd:
+                self.proc_time = time.time()
                 self.scan_queue.put(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
+                
+                with open('output/returnTimeStampsAcq.csv', 'w') as f:
+                    write = csv.writer(f)
+                    write.writerows([self.return_times])
+                
                 break
             elif AcqMsgIDs.ERROR == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_ERROR)
@@ -256,7 +281,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     # TODO: The start of the intra acquisition thread could be done before or after
     # the signaling to the client. Should be decided. Possible synchronisation of start
     # could be considered.
-    # intra_acq_thread.start()
+    #intra_acq_thread.start()
     acquisition.logger.info('Signal "Ready for acquisition".')
     acquisition.signal_ready_for_acquisition()
     intra_acq_thread.start()

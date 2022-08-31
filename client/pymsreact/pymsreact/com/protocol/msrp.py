@@ -2,6 +2,9 @@ import msgpack
 from enum import IntEnum
 from .base import BaseProtocol
 
+import time
+import csv
+
 class MSReactProtocol(BaseProtocol):
     """
     A class providing protocol functionalities, including message protocol,
@@ -71,6 +74,10 @@ class MSReactProtocol(BaseProtocol):
     def __init__(self, transport_layer):
         self.tl = transport_layer
         
+        
+        self.return_times = []
+        self.proc_time = None
+        
     async def send_message(self, msg, payload = None):
         if (msg in self.MessageIDs):
             if (None == payload):
@@ -78,14 +85,25 @@ class MSReactProtocol(BaseProtocol):
             else:
                 msg = msg.to_bytes(1, 'big') + msgpack.packb(payload)
                 await self.tl.send(msg)
+                
+            if self.proc_time is not None:
+                diff = time.time() - self.proc_time
+                #print(f'Timing from protocol layer: {diff}')
+                self.return_times.append(diff)
+                self.proc_time = None
+            
         else:
             #TODO - Exception
             pass
     
     async def receive_message(self):
         msg = await self.tl.receive()
+        
         # Parse messages
         msg_id = self.MessageIDs(msg[0])
+        
+        if msg_id == self.MessageIDs.SCAN_EVT:
+            self.proc_time = time.time()
         
         if (1 < len(msg)):
             payload = msgpack.unpackb(msg[1:])
@@ -93,3 +111,9 @@ class MSReactProtocol(BaseProtocol):
             payload = None
             
         return (msg_id, payload)
+        
+        
+    def write_times_to_file(self):
+        with open('output/returnTimeStamps.csv', 'w') as f:
+            write = csv.writer(f)
+            write.writerows(self.return_times)

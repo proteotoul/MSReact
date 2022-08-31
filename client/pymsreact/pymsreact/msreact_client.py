@@ -15,6 +15,8 @@ from algorithms.manager.acquisition import AcqMsgIDs
 from algorithms.manager.algorithm_runner import AlgorithmManager
 from custom_apps.manager import CustomAppManager
 
+import cProfile
+
 VERSION = 'v0.0'
 
 class MSReactClient:
@@ -149,6 +151,10 @@ class MSReactClient:
             self.logger.error(args)
         
     async def run_on_instrument(self, loop, args):
+    
+        #pr = cProfile.Profile(builtins=False)
+        #pr.enable()
+        
         # Init the instrument server manager
         self.inst_client = \
             instrument.InstrumentClient(self.protocol,
@@ -177,6 +183,9 @@ class MSReactClient:
             
         else:
             self.logger.error("Connection Failed")
+            
+        #pr.disable()
+        #pr.dump_stats('output/profiling.txt')
     
     async def run_on_mock(self, loop, args):
         # Init the mock instrument server manager

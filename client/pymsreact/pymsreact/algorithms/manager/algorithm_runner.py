@@ -10,6 +10,10 @@ import inspect
 import os
 import pkgutil
 from .algorithm import Algorithm
+
+
+import time
+import csv
         
 class AlgorithmManager:
     """
@@ -53,6 +57,10 @@ class AlgorithmManager:
         
         # Discover algorithms
         self.discover_algorithms()
+        
+        # Diagnostics
+        self.return_times = []
+        self.proc_time = None
         
     def get_algorithm_names(self, algo_type):
         """Collects the algorithm names for a given algorithm type
@@ -157,6 +165,8 @@ class AlgorithmManager:
             Scan that was received from the instrument (through the server) in
             the form of a dictionary.
         """
+        
+        self.proc_time = time.time()
         self.acq_in_q.put((AcqMsgIDs.SCAN, scan))
     
     def instrument_error(self):
@@ -210,10 +220,21 @@ class AlgorithmManager:
                         logger = logging.getLogger(item.name)
                         logger.handle(item)
                     else:
+                        if self.proc_time is not None:
+                            diff = time.time() - self.proc_time
+                            #print(f'Timing from algo runner: {diff}')
+                            self.return_times.append(diff)
+                            self.proc_time = None
                         await self.app_cb(*item)
                 except Empty:
                     pass
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.001)
             self.logger.info(f'Process acquisition requests loop exited.')
+            
+            
+            with open('output/returnTimeStamps.csv', 'w') as f:
+                write = csv.writer(f)
+                write.writerows([self.return_times])
+            
         except Exception as e:
             traceback.print_exc()
