@@ -79,7 +79,7 @@ class InstrumentClient:
         
         return success
         
-    async def disconnect_from_server():
+    async def disconnect_from_server(self):
         """ Disconnects from the server to which the client is currently 
         connected. """
         self.address = None
@@ -233,7 +233,7 @@ class InstrumentClient:
             with open('output\\PossibleParams.csv', 'w', newline='') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames = field_names)
                 writer.writeheader()
-                self.logger.info(payload)
+                #self.logger.info(payload)
                 for v in payload:
                     writer.writerow(v)
         return payload

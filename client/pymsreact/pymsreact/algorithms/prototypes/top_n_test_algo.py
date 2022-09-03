@@ -62,13 +62,17 @@ class TopNAcquisition(Acquisition):
         num_requests = 0
         num_received = 0
         
+        rn = 1
         while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
             
             if ((scan is not None) and (2 == scan["MSScanLevel"])):
                 num_received = num_received + 1
             if ((scan is not None) and (1 == scan["MSScanLevel"])):
-                self.logger.info(f'Received/Requested ratio = {num_received}/{num_requests}')
+                time_of_algorithm = time.time()
+                self.logger.info(f'Received/Requested ratio = {num_received}/{num_requests}, ' +
+                                 f'Last running number: {rn}, ' +
+                                 f'Exclusion list length: {len(exclusion_list)}')
                 num_received = 0
                 num_requests = 0
                 
@@ -88,6 +92,15 @@ class TopNAcquisition(Acquisition):
                 # Do deisotoping
                 centroids = deisotoper.deisotope_peaks(centroids)
                 
+                # Find Cytochrome C peptides
+                peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
+                            584.8147, 390.2122, 390.2278]
+                for peptide in peptides:
+                    cyto_centroid = \
+                        next((c for c in centroids if 0.01 > abs(c["Mz"] - peptide)), None)
+                    if cyto_centroid is not None:
+                        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
+                
                 # Sort centroids by their intensity
                 centroids.sort(key=lambda i: i["Intensity"], reverse=True)
                 
@@ -100,17 +113,32 @@ class TopNAcquisition(Acquisition):
                         if MZ_TOLERANCE > abs(centroids[i]["Mz"] - centroid_excl["Mz"]):
                             not_excluded = False # it is excluded
                             break
-                    if not_excluded:            
+                    if not_excluded:
+                        #print("_".join([str(scan["ScanNumber"]), str(rn)]))
                         self.request_custom_scan({"PrecursorMass": str(centroids[i]["Mz"]),
-                                                  "ScanType": "MSn"})
+                                                  "ScanType": "MSn",
+                                                  "AGCTarget": "100000",
+                                                  "MaxIT": "50", # Changed from 100 to 50
+                                                  "Analyzer": "Orbitrap",
+                                                  "IsolationMode": "Quadrupole",
+                                                  "OrbitrapResolution": "30000",
+                                                  "ActivationType": "HCD",
+                                                  "FirstMass": "100",
+                                                  "LastMass": "2000",
+                                                  "IsolationWidth": "1",
+                                                  "CollisionEnergy": "30",
+                                                  "REQUEST_ID": "_".join([str(scan["ScanNumber"]), str(rn)]),
+                                                  })
+                                                  
                         centroid = centroids[i] | {"ExclusionTime" : current_retention_time}
                         excl_list_buffer.append(centroid)
                         num_requests = num_requests + 1
+                        rn = rn + 1
                     i = i + 1
                 exclusion_list = exclusion_list + excl_list_buffer
-                self.logger.info(f'Exclusion list length: {len(exclusion_list)}')
+                self.logger.info(f'Run time of algorithm: {time.time() - time_of_algorithm}[s]')
             else:
-                pass    
+                pass
         
         self.logger.info('Finishing intra acquisition.')
     

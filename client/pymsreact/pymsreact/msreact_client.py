@@ -181,6 +181,11 @@ class MSReactClient:
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
+            self.logger.info("Unsubscribe from scans.")
+            await self.inst_client.unsubscribe_from_scans()
+            self.logger.info("Disconnect from server.")
+            await self.inst_client.disconnect_from_server()
+            
         else:
             self.logger.error("Connection Failed")
             

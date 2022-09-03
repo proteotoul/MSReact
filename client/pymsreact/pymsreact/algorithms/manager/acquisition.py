@@ -15,8 +15,6 @@ from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
 
-import csv
-
 class AcqMsgIDs(Enum):
     """
     Enum of acquisition message ids
@@ -101,11 +99,6 @@ class Acquisition:
         root.setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
         
-        
-        # Diagnostics
-        self.return_times = []
-        self.proc_time = None
-        
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
         empty it returns None
@@ -145,13 +138,7 @@ class Acquisition:
         if ((request_id is not None) and (isinstance(request_id, int))):
             request.update({'REQUEST_ID' : request_id})
 
-        self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
-        if self.proc_time is not None:
-            diff = time.time() - self.proc_time
-            #print(f'Timing from acquisition: {diff}')
-            self.return_times.append(diff)
-            self.proc_time = None
-        
+        self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))       
         
     def request_repeating_scan(self, request):
         """Request a repeating scan with the given parameters
@@ -210,15 +197,9 @@ class Acquisition:
                 time.sleep(0.001)
                 continue
             if AcqMsgIDs.SCAN == cmd:
-                self.proc_time = time.time()
                 self.scan_queue.put(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
-                
-                with open('output/returnTimeStampsAcq.csv', 'w') as f:
-                    write = csv.writer(f)
-                    write.writerows([self.return_times])
-                
                 break
             elif AcqMsgIDs.ERROR == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_ERROR)
@@ -281,7 +262,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     # TODO: The start of the intra acquisition thread could be done before or after
     # the signaling to the client. Should be decided. Possible synchronisation of start
     # could be considered.
-    #intra_acq_thread.start()
+    # intra_acq_thread.start()
     acquisition.logger.info('Signal "Ready for acquisition".')
     acquisition.signal_ready_for_acquisition()
     intra_acq_thread.start()
