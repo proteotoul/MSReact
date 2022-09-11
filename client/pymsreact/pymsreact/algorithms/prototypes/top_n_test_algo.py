@@ -1,10 +1,11 @@
 from algorithms.manager.algorithm import Algorithm
-from algorithms.manager.acquisition import Acquisition, AcqStatIDs
+from algorithms.manager.acquisition import Acquisition, AcqStatIDs, ScanFields, CentroidFields
 import algorithms.manager.ms_instruments.tribrid_instrument as ti
 import algorithms.manager.acquisition_workflow as aw
 import json
 import logging
 import time
+from datetime import datetime
 import csv
 # imports for deisotoping
 from utils.deisotoper_openms import DeisitoperOpenMS
@@ -63,21 +64,25 @@ class TopNAcquisition(Acquisition):
         num_received = 0
         
         rn = 1
+        self.diagnostics = {}
+        
         while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
             scan = self.fetch_received_scan()
             
-            if ((scan is not None) and (2 == scan["MSScanLevel"])):
+            if ((scan is not None) and (2 == scan[ScanFields.MS_SCAN_LEVEL])):
                 num_received = num_received + 1
-            if ((scan is not None) and (1 == scan["MSScanLevel"])):
+            if ((scan is not None) and (1 == scan[ScanFields.MS_SCAN_LEVEL])):
                 time_of_algorithm = time.time()
                 self.logger.info(f'Received/Requested ratio = {num_received}/{num_requests}, ' +
                                  f'Last running number: {rn}, ' +
                                  f'Exclusion list length: {len(exclusion_list)}')
+                self.diagnostics.update({scan[ScanFields.SCAN_NUMBER] : {'NumReceived' : num_received,
+                                                                         'CentroidCount' : scan[ScanFields.CENTROID_COUNT]}})
                 num_received = 0
                 num_requests = 0
                 
                 # Get current time
-                current_retention_time = scan["RetentionTime"]
+                current_retention_time = scan[ScanFields.RETENTION_TIME]
                 
                 # Remove expired centroids from the exclusion list
                 cutoff = 0 # This assignment is necessary in case of empty exclusion list.
@@ -87,7 +92,7 @@ class TopNAcquisition(Acquisition):
                 exclusion_list = exclusion_list[cutoff:]
                         
                 # Get centroids from the scan
-                centroids = scan["Centroids"]
+                centroids = scan[ScanFields.CENTROIDS]
                 
                 # Do deisotoping
                 centroids = deisotoper.deisotope_peaks(centroids)
@@ -119,15 +124,15 @@ class TopNAcquisition(Acquisition):
                                                   "ScanType": "MSn",
                                                   "AGCTarget": "100000",
                                                   "MaxIT": "50", # Changed from 100 to 50
-                                                  "Analyzer": "Orbitrap",
+                                                  #"Analyzer": "Orbitrap",
                                                   "IsolationMode": "Quadrupole",
-                                                  "OrbitrapResolution": "30000",
+                                                  #"OrbitrapResolution": "30000",
                                                   "ActivationType": "HCD",
                                                   "FirstMass": "100",
                                                   "LastMass": "2000",
                                                   "IsolationWidth": "1",
                                                   "CollisionEnergy": "30",
-                                                  "REQUEST_ID": "_".join([str(scan["ScanNumber"]), str(rn)]),
+                                                  "REQUEST_ID": "_".join([str(scan[ScanFields.SCAN_NUMBER]), str(rn)]),
                                                   })
                                                   
                         centroid = centroids[i] | {"ExclusionTime" : current_retention_time}
@@ -136,7 +141,18 @@ class TopNAcquisition(Acquisition):
                         rn = rn + 1
                     i = i + 1
                 exclusion_list = exclusion_list + excl_list_buffer
-                self.logger.info(f'Run time of algorithm: {time.time() - time_of_algorithm}[s]')
+                algo_time = time.time() - time_of_algorithm
+                self.logger.info(f'Run time of algorithm: {algo_time}[s]')
+                self.diagnostics[scan["ScanNumber"]].update({"AlgoTime" : algo_time,
+                                                           "NumRequests" : num_requests,
+                                                            "ExclusionListLen" : len(exclusion_list),
+                                                            "CentroidCountDeisotoped" : len(centroids)})
+                                                            
+                #["AlgoTime"] = algo_time
+                #self.diagnostics[scan["ScanNumber"]]["NumRequests"] = num_requests
+                #self.diagnostics[scan["ScanNumber"]]["ExclusionListLen"] = len(exclusion_list)
+                #self.diagnostics[scan["ScanNumber"]]["CentroidCountDeisotoped"] = len(centroids)
+                
             else:
                 pass
         
@@ -144,6 +160,16 @@ class TopNAcquisition(Acquisition):
     
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
+        now = datetime.now()
+        print(self.diagnostics)
+        with open(f'output/diagnostics_{now.strftime("%Y%m%d_%H%M")}.csv', 'w') as f:
+            f.write("ScanNum,NumReceived,CentroidCount,AlgoTime,NumRequests,ExclusionListLen,CentroidCountDeisotoped\n")
+            for key in self.diagnostics.keys():
+                line = f"{key},"
+                for subkey in self.diagnostics[key]:
+                    line += f'{self.diagnostics[key][subkey]},'
+                f.write(line + '\n')
+                    #f.write("%s, %s\n" % (key, self.diagnostics[key]))
         
 
 class TopNTestAlgorithm(Algorithm):

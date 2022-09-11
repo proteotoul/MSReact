@@ -10,7 +10,7 @@ import inspect
 import time
 import json
 import queue
-from enum import Enum
+from enum import Enum, IntEnum
 from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
@@ -41,6 +41,30 @@ class AcqStatIDs(Enum):
     ACQUISITION_ENDED_NORMAL = 4
     ACQUISITION_ENDED_ERROR = 5
     ACQUISITION_POST_ACQUISITION = 6
+    
+class ScanFields(IntEnum):
+    """
+    Enum to decode receive scans
+    """
+    CENTROID_COUNT = 0
+    CENTROIDS = 1
+    DETECTOR_NAME = 2
+    MS_SCAN_LEVEL = 3
+    PRECURSOR_CHANGE = 4
+    PRECURSOR_MASS = 5
+    RETENTION_TIME = 6
+    SCAN_NUMBER = 7
+    
+class CentroidFields(IntEnum):
+    CHARGE = 0
+    INTENSITY = 1
+    IS_EXCEPTIONAL = 2
+    IS_FRAGMENTED = 3
+    IS_MERGED = 4
+    IS_MONOISOTOPIC = 5
+    IS_REFERENCED = 6
+    MZ = 7
+    
 
 DEFAULT_NAME = "Default Acquisition"
 

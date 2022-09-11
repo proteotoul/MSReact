@@ -230,12 +230,12 @@ class InstrumentClient:
         else:
             field_names = ['Name', 'Selection', 'DefaultValue', 'Help']
                   
-            with open('output\\PossibleParams.csv', 'w', newline='') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames = field_names)
-                writer.writeheader()
+            #with open('output\\PossibleParams.csv', 'w', newline='') as csvfile:
+            #    writer = csv.DictWriter(csvfile, fieldnames = field_names)
+            #    writer.writeheader()
                 #self.logger.info(payload)
-                for v in payload:
-                    writer.writerow(v)
+            #    for v in payload:
+            #        writer.writerow(v)
         return payload
         
     async def request_scan(self, parameters):
