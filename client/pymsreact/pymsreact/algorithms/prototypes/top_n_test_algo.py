@@ -9,9 +9,6 @@ from datetime import datetime
 import csv
 # imports for deisotoping
 from utils.deisotoper_openms import DeisitoperOpenMS
-from utils.deisotoper_msdeisotope import DeisitoperMSDeisotope
-#import ms_deisotope
-#from pyopenms import MSSpectrum, Deisotoper
 
 # Acquisition settings
 ACQUISITION_WORKFLOW = aw.Listening
@@ -30,7 +27,8 @@ COMMENT = "This test is checking whether top N method " + \
 
 MZ_TOLERANCE = 0.0001 # Tolerance for the exclusion
 NUMBER_OF_PEAKS = 15 # Number of precursors to select for MS2
-EXCLUSION_TIME = 0.3333 # Exclusion time in minutes
+EXCLUSION_TIME = 0.5 # Exclusion time in minutes
+#EXCLUSION_TIME = 0.02 # Exclusion time in minutes
 
 class TopNAcquisition(Acquisition):
     def __init__(self, *args):
@@ -56,8 +54,6 @@ class TopNAcquisition(Acquisition):
         self.logger.info('Executing intra-acquisition steps.')
         scans = []
         deisotoper = DeisitoperOpenMS()
-        # Alternatively other deisotoper can be selected as well
-        # deisotoper = DeisitoperMSDeisotope()
         
         exclusion_list = []
         num_requests = 0
@@ -82,32 +78,41 @@ class TopNAcquisition(Acquisition):
                 num_requests = 0
                 
                 # Get current time
-                current_retention_time = scan[ScanFields.RETENTION_TIME]
+                current_rt = scan[ScanFields.RETENTION_TIME]
                 
                 # Remove expired centroids from the exclusion list
                 cutoff = 0 # This assignment is necessary in case of empty exclusion list.
-                for cutoff in range(len(exclusion_list)):
-                    if abs(current_retention_time - exclusion_list[cutoff]["ExclusionTime"]) < EXCLUSION_TIME:
+                while cutoff < len(exclusion_list):
+                    if abs(current_rt - exclusion_list[cutoff]["ExclusionTime"]) < EXCLUSION_TIME:
                         break
+                    cutoff = cutoff + 1
                 exclusion_list = exclusion_list[cutoff:]
                         
                 # Get centroids from the scan
                 centroids = scan[ScanFields.CENTROIDS]
+                # Get mzs and intensities from centroids
+                mzs = [centroid[CentroidFields.MZ] for centroid in centroids]
+                intensities = [centroid[CentroidFields.INTENSITY] for centroid in centroids]
                 
                 # Do deisotoping
-                centroids = deisotoper.deisotope_peaks(centroids)
+                mzs, intensities = deisotoper.deisotope_peaks(mzs, intensities)
+                
+                # Combine the mzs and intensities in to a list of dicts
+                centroids = [{CentroidFields.MZ : mzs[i], 
+                              CentroidFields.INTENSITY: intensities[i] } 
+                             for i in range(len(mzs))]
                 
                 # Find Cytochrome C peptides
-                peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
-                            584.8147, 390.2122, 390.2278]
-                for peptide in peptides:
-                    cyto_centroid = \
-                        next((c for c in centroids if 0.01 > abs(c["Mz"] - peptide)), None)
-                    if cyto_centroid is not None:
-                        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
+                # peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
+                #            584.8147, 390.2122, 390.2278]
+                #for peptide in peptides:
+                #    cyto_centroid = \
+                #        next((c for c in centroids if 0.01 > abs(c[CentroidFields.MZ] - peptide)), None)
+                #    if cyto_centroid is not None:
+                #        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
                 
                 # Sort centroids by their intensity
-                centroids.sort(key=lambda i: i["Intensity"], reverse=True)
+                centroids.sort(key=lambda i: i[CentroidFields.INTENSITY], reverse=True)
                 
                 # TODO: This code might be written nicer and shorter with some list comprehension
                 i = 0
@@ -115,12 +120,11 @@ class TopNAcquisition(Acquisition):
                 while ((i < len(centroids)) and (len(excl_list_buffer) != NUMBER_OF_PEAKS)):
                     not_excluded = True
                     for centroid_excl in exclusion_list:
-                        if MZ_TOLERANCE > abs(centroids[i]["Mz"] - centroid_excl["Mz"]):
+                        if MZ_TOLERANCE > abs(centroids[i][CentroidFields.MZ] - centroid_excl[CentroidFields.MZ]):
                             not_excluded = False # it is excluded
                             break
                     if not_excluded:
-                        #print("_".join([str(scan["ScanNumber"]), str(rn)]))
-                        self.request_custom_scan({"PrecursorMass": str(centroids[i]["Mz"]),
+                        self.request_custom_scan({"PrecursorMass": str(centroids[i][CentroidFields.MZ]),
                                                   "ScanType": "MSn",
                                                   "AGCTarget": "100000",
                                                   "MaxIT": "50", # Changed from 100 to 50
@@ -135,7 +139,7 @@ class TopNAcquisition(Acquisition):
                                                   "REQUEST_ID": "_".join([str(scan[ScanFields.SCAN_NUMBER]), str(rn)]),
                                                   })
                                                   
-                        centroid = centroids[i] | {"ExclusionTime" : current_retention_time}
+                        centroid = centroids[i] | {"ExclusionTime" : current_rt}
                         excl_list_buffer.append(centroid)
                         num_requests = num_requests + 1
                         rn = rn + 1
@@ -143,16 +147,10 @@ class TopNAcquisition(Acquisition):
                 exclusion_list = exclusion_list + excl_list_buffer
                 algo_time = time.time() - time_of_algorithm
                 self.logger.info(f'Run time of algorithm: {algo_time}[s]')
-                self.diagnostics[scan["ScanNumber"]].update({"AlgoTime" : algo_time,
-                                                           "NumRequests" : num_requests,
-                                                            "ExclusionListLen" : len(exclusion_list),
-                                                            "CentroidCountDeisotoped" : len(centroids)})
-                                                            
-                #["AlgoTime"] = algo_time
-                #self.diagnostics[scan["ScanNumber"]]["NumRequests"] = num_requests
-                #self.diagnostics[scan["ScanNumber"]]["ExclusionListLen"] = len(exclusion_list)
-                #self.diagnostics[scan["ScanNumber"]]["CentroidCountDeisotoped"] = len(centroids)
-                
+                self.diagnostics[scan[ScanFields.SCAN_NUMBER]].update({"AlgoTime" : algo_time,
+                                                                       "NumRequests" : num_requests,
+                                                                       "ExclusionListLen" : len(exclusion_list),
+                                                                       "CentroidCountDeisotoped" : len(centroids)})
             else:
                 pass
         
@@ -161,7 +159,7 @@ class TopNAcquisition(Acquisition):
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
         now = datetime.now()
-        print(self.diagnostics)
+        #print(self.diagnostics)
         with open(f'output/diagnostics_{now.strftime("%Y%m%d_%H%M")}.csv', 'w') as f:
             f.write("ScanNum,NumReceived,CentroidCount,AlgoTime,NumRequests,ExclusionListLen,CentroidCountDeisotoped\n")
             for key in self.diagnostics.keys():
