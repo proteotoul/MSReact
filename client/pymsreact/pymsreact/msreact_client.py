@@ -147,6 +147,8 @@ class MSReactClient:
                     await self.inst_client.start_acquisition()
         elif (AcqMsgIDs.REQUEST_ACQUISITION_STOP == msg_id):
             await self.inst_client.stop_acquisition()
+        elif (AcqMsgIDs.REQUEST_DEF_SCAN_PARAM_UPDATE == msg_id):
+            await self.inst_client.update_default_scan_params(args)
         elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
         

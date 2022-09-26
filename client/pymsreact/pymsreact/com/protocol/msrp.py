@@ -63,6 +63,7 @@ class MSReactProtocol(BaseProtocol):
         CANCEL_CUSTOM_SCAN_CMD      = 110
         SET_REPEATING_SCAN_CMD      = 111
         CLEAR_REPEATING_SCAN_CMD    = 112
+        UPDATE_DEF_SCAN_PARAMS_CMD  = 113
 
         # Mock message group 
         SET_MS_SCAN_LVL_CMD         = 200

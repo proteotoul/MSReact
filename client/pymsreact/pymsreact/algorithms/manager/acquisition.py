@@ -28,8 +28,9 @@ class AcqMsgIDs(Enum):
     REQUEST_ACQUISITION_STOP = 7
     ACQUISITION_ENDED = 8
     ERROR = 9
-    ENABLE_PLOT = 10
-    DISABLE_PLOT = 11
+    REQUEST_DEF_SCAN_PARAM_UPDATE = 10
+    ENABLE_PLOT = 11
+    DISABLE_PLOT = 12
     
 class AcqStatIDs(Enum):
     """
@@ -64,7 +65,6 @@ class CentroidFields(IntEnum):
     IS_MONOISOTOPIC = 5
     IS_REFERENCED = 6
     MZ = 7
-    
 
 DEFAULT_NAME = "Default Acquisition"
 
@@ -183,6 +183,20 @@ class Acquisition:
             string-string dictionary in the form of parameter_name : value, eg. 
             "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.CANCEL_REPEATING_SCAN, request))
+        
+    def request_def_scan_param_update(self, params):
+        """Request the update of default scan parameters. When a custom scan is 
+           requested, only the scan parameters that are specified in the request 
+           are updated, the rest of the parameters stay the default values. With
+           this request the default parameters can be overwritten, so they 
+           don't need to be specified at each request if they stay the same.
+        Parameters
+        ----------
+        params : dict
+            Repeating scan request parameters to cancel organised into a
+            string-string dictionary in the form of parameter_name : value, eg. 
+            "PrecursorMass" : "800.25" """
+        self.queue_out.put((AcqMsgIDs.REQUEST_DEF_SCAN_PARAM_UPDATE, params))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
