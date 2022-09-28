@@ -79,7 +79,7 @@ class InstrumentClient:
         
         return success
         
-    async def disconnect_from_server():
+    async def disconnect_from_server(self):
         """ Disconnects from the server to which the client is currently 
         connected. """
         self.address = None
@@ -230,12 +230,12 @@ class InstrumentClient:
         else:
             field_names = ['Name', 'Selection', 'DefaultValue', 'Help']
                   
-            with open('output\\PossibleParams.csv', 'w', newline='') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames = field_names)
-                writer.writeheader()
-                self.logger.info(payload)
-                for v in payload:
-                    writer.writerow(v)
+            #with open('output\\PossibleParams.csv', 'w', newline='') as csvfile:
+            #    writer = csv.DictWriter(csvfile, fieldnames = field_names)
+            #    writer.writeheader()
+                #self.logger.info(payload)
+            #    for v in payload:
+            #        writer.writerow(v)
         return payload
         
     async def request_scan(self, parameters):
@@ -339,6 +339,20 @@ class InstrumentClient:
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with stopping acquisition.")
             raise Exception("Problem with stopping acquisition.")
+            
+    async def update_default_scan_params(self, params):
+        """Update default scan parameters. When a custom scan is requested, 
+           only the scan parameters that are specified in the request are 
+           updated, the rest of the parameters stay the default values. With
+           this request the default parameters can be overwritten, so they 
+           don't need to be specified at each request if they stay the same."""
+        self.logger.info('Update default scan parameters to the following: ' +
+                         f'{params}')
+        await self.proto.send_message(self.proto.MessageIDs.UPDATE_DEF_SCAN_PARAMS_CMD, params)
+        msg, payload = await self.__wait_for_response()
+        if (self.proto.MessageIDs.OK_RSP != msg):
+            self.logger.error("Problem with updating default scan parameters.")
+            raise Exception("Problem with updating default scan parameters.")
         
     async def listen_for_messages(self):
         """Listens for messages from the server."""

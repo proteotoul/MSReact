@@ -10,7 +10,7 @@ import inspect
 import time
 import json
 import queue
-from enum import Enum
+from enum import Enum, IntEnum
 from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
@@ -28,6 +28,9 @@ class AcqMsgIDs(Enum):
     REQUEST_ACQUISITION_STOP = 7
     ACQUISITION_ENDED = 8
     ERROR = 9
+    REQUEST_DEF_SCAN_PARAM_UPDATE = 10
+    ENABLE_PLOT = 11
+    DISABLE_PLOT = 12
     
 class AcqStatIDs(Enum):
     """
@@ -39,6 +42,29 @@ class AcqStatIDs(Enum):
     ACQUISITION_ENDED_NORMAL = 4
     ACQUISITION_ENDED_ERROR = 5
     ACQUISITION_POST_ACQUISITION = 6
+    
+class ScanFields(IntEnum):
+    """
+    Enum to decode receive scans
+    """
+    CENTROID_COUNT = 0
+    CENTROIDS = 1
+    DETECTOR_NAME = 2
+    MS_SCAN_LEVEL = 3
+    PRECURSOR_CHANGE = 4
+    PRECURSOR_MASS = 5
+    RETENTION_TIME = 6
+    SCAN_NUMBER = 7
+    
+class CentroidFields(IntEnum):
+    CHARGE = 0
+    INTENSITY = 1
+    IS_EXCEPTIONAL = 2
+    IS_FRAGMENTED = 3
+    IS_MERGED = 4
+    IS_MONOISOTOPIC = 5
+    IS_REFERENCED = 6
+    MZ = 7
 
 DEFAULT_NAME = "Default Acquisition"
 
@@ -97,6 +123,16 @@ class Acquisition:
         root.setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
         
+    def configure(self, fconf):
+        if fconf is not None:
+            with open(fconf) as f:
+                self.config = json.load(f)
+        else:
+            self.config = None
+            
+        self.logger.info('Acquisition was configured with the following ' +
+                         f'configuration: {self.config}')
+    
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
         empty it returns None
@@ -108,7 +144,7 @@ class Acquisition:
         try:
             scan = self.scan_queue.get_nowait()
         except queue.Empty:
-            pass
+            time.sleep(0.001)
         return scan
         
     def signal_ready_for_acquisition(self):
@@ -124,7 +160,7 @@ class Acquisition:
         """Requests from the algorithm runner to stop the acquisition"""
         self.queue_out.put((AcqMsgIDs.REQUEST_ACQUISITION_STOP, None))
         
-    def request_custom_scan(self, request):
+    def request_custom_scan(self, request, request_id = None):
         """Requests a custom scan with the given parameters
         Parameters
         ----------
@@ -132,7 +168,11 @@ class Acquisition:
             Custom scan request parameters organised into a string-string 
             dictionary in the form of parameter_name : value, eg. 
             "PrecursorMass" : "800.25" """
-        self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))
+        # TODO: Should check if the int is 64 bit length or not.
+        if ((request_id is not None) and (isinstance(request_id, int))):
+            request.update({'REQUEST_ID' : request_id})
+
+        self.queue_out.put((AcqMsgIDs.REQUEST_SCAN, request))       
         
     def request_repeating_scan(self, request):
         """Request a repeating scan with the given parameters
@@ -153,6 +193,20 @@ class Acquisition:
             string-string dictionary in the form of parameter_name : value, eg. 
             "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.CANCEL_REPEATING_SCAN, request))
+        
+    def request_def_scan_param_update(self, params):
+        """Request the update of default scan parameters. When a custom scan is 
+           requested, only the scan parameters that are specified in the request 
+           are updated, the rest of the parameters stay the default values. With
+           this request the default parameters can be overwritten, so they 
+           don't need to be specified at each request if they stay the same.
+        Parameters
+        ----------
+        params : dict
+            Repeating scan request parameters to cancel organised into a
+            string-string dictionary in the form of parameter_name : value, eg. 
+            "PrecursorMass" : "800.25" """
+        self.queue_out.put((AcqMsgIDs.REQUEST_DEF_SCAN_PARAM_UPDATE, params))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
@@ -188,7 +242,7 @@ class Acquisition:
             try:
                 cmd, payload = self.queue_in.get_nowait()
             except queue.Empty:
-                time.sleep(0.1)
+                time.sleep(0.001)
                 continue
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
@@ -219,7 +273,11 @@ class Acquisition:
            acquisition"""
         pass
         
-def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
+def acquisition_process(module_name,
+                        acquisition_name,
+                        queue_in,
+                        queue_out,
+                        fconf):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
 
@@ -241,6 +299,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
+    acquisition.configure(fconf)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()
