@@ -10,6 +10,7 @@ import inspect
 import os
 import pkgutil
 from .algorithm import Algorithm
+from pathlib import Path
         
 class AlgorithmManager:
     """
@@ -70,7 +71,7 @@ class AlgorithmManager:
             type.
         """
         return [Algorithm.ALGORITHM_NAME 
-                for Algorithm in self.ALGO_LISTS[algo_type]]
+                for Algorithm, conf in self.ALGO_LISTS[algo_type]]
         
     def find_by_name(self, name):
         """Retreive an algorithm with a given name
@@ -91,7 +92,7 @@ class AlgorithmManager:
         for key in self.ALGO_LISTS:
             list_to_search = self.ALGO_LISTS[key]
             for i in range(len(list_to_search)):
-                if name == list_to_search[i].ALGORITHM_NAME:
+                if name == list_to_search[i][0].ALGORITHM_NAME:
                     found_algorithm = True
                     return list_to_search[i]
         if not found_algorithm:
@@ -108,13 +109,19 @@ class AlgorithmManager:
                 for subinfo in sub_infos:
                     import_name = 'algorithms.' + info.name + '.' + subinfo.name
                     module = importlib.import_module(import_name)
-                    for member in inspect.getmembers(module):
-                        if (inspect.isclass(member[1]) and 
-                            issubclass(member[1], Algorithm) and
-                            member[1] is not Algorithm):
-                            self.ALGO_LISTS[info.name].append(member[1])
+                    for name, value in inspect.getmembers(module):
+                        #name, value = member
+                        if (inspect.isclass(value) and 
+                            issubclass(value, Algorithm) and
+                            value is not Algorithm):
+                            fconf = \
+                                self.__validate_fconf(current_dir + '\\'
+                                                      + info.name + '\\' 
+                                                      + subinfo.name
+                                                      + '.json')
+                            self.ALGO_LISTS[info.name].append((value, fconf))
     
-    def select_algorithm(self, algorithm, instrument_info):
+    def select_algorithm(self, algorithm, fconf, instrument_info):
         """Method to select the algorithm to run.
         
         Parameters
@@ -126,7 +133,7 @@ class AlgorithmManager:
         """
         self.logger.info(f'Selecting algorithm {algorithm}')
         success = True
-        selected_algorithm = self.find_by_name(algorithm)
+        selected_algorithm, default_fconf = self.find_by_name(algorithm)
 
         if selected_algorithm is not None:
             
@@ -138,6 +145,12 @@ class AlgorithmManager:
                     self.logger.error(f'Available instrument {instrument_info}' +
                                       f' not compatible with {selected_algorithm}.')
                     break
+                    
+            if self.__validate_fconf(fconf) is not None:
+                self.fconf = fconf
+            else:
+                self.fconf = default_fconf # If it's None it's fine
+                
         else:
             success = False
             self.logger.error(f'Algorithm {algorithm} cannot be selected.')
@@ -176,6 +189,15 @@ class AlgorithmManager:
         except Exception as e:
             traceback.print_exc()
         self.listening.set()
+        
+    def __validate_fconf(self, fconf):
+        if fconf is not None:
+            file = Path(fconf)
+            validated_fconf = \
+                fconf if (file.is_file() and file.suffix == '.json') else None
+        else:
+            validated_fconf = fconf
+        return validated_fconf
             
     async def __execute_algorithm(self, loop):
         """Private method, runs the acquisitions in sequence within an algorithm.
@@ -195,7 +217,8 @@ class AlgorithmManager:
                                        acquisition.__module__,
                                        acquisition.__name__,
                                        self.acq_in_q, 
-                                       self.acq_out_q)
+                                       self.acq_out_q,
+                                       self.fconf)
         self.logger.info(f'Algorithm execution ended.')
                                        
     async def __process_acquisition_requests(self):

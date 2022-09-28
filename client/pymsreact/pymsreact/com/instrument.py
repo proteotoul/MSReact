@@ -346,7 +346,8 @@ class InstrumentClient:
            updated, the rest of the parameters stay the default values. With
            this request the default parameters can be overwritten, so they 
            don't need to be specified at each request if they stay the same."""
-        self.logger.info('Stop transferring scans from the raw file by the mock')
+        self.logger.info('Update default scan parameters to the following: ' +
+                         f'{params}')
         await self.proto.send_message(self.proto.MessageIDs.UPDATE_DEF_SCAN_PARAMS_CMD, params)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):

@@ -123,6 +123,16 @@ class Acquisition:
         root.setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
         
+    def configure(self, fconf):
+        if fconf is not None:
+            with open(fconf) as f:
+                self.config = json.load(f)
+        else:
+            self.config = None
+            
+        self.logger.info('Acquisition was configured with the following ' +
+                         f'configuration: {self.config}')
+    
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
         empty it returns None
@@ -263,7 +273,11 @@ class Acquisition:
            acquisition"""
         pass
         
-def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
+def acquisition_process(module_name,
+                        acquisition_name,
+                        queue_in,
+                        queue_out,
+                        fconf):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
 
@@ -285,6 +299,7 @@ def acquisition_process(module_name, acquisition_name, queue_in, queue_out):
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
+    acquisition.configure(fconf)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()

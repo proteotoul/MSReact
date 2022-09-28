@@ -24,7 +24,7 @@ class MSReactClient:
     def __init__(self):
         
         # Set up logging
-        logging.config.dictConfig(self.__load_dict_config())
+        logging.config.dictConfig(self.__load_log_config())
         self.logger = logging.getLogger(__name__)
         
         # Set up async loop and process executor
@@ -60,14 +60,20 @@ class MSReactClient:
         parser_run = \
             subparsers.add_parser('run',
                                   help='command to use developed algorithms')
-        # TODO - This won't be an input, but will be retreived from 
-        # the middleware
+        # TODO - Address won't be an input, but will be retreived from 
+        # the middleware, or from elsewhere.
         parser_run.add_argument('address',
                                    help='address to the MSReact server')
         parser_run.add_argument('alg', choices = algorithm_choices,
                                    metavar = 'algorithm', default = 'monitor',
                                    help=f'algorithm to use during the acquisition, \
                                    choices: {", ".join(algorithm_choices)}')
+                                   
+        parser_run.add_argument('-c',
+                                metavar = 'config',
+                                dest = 'config',
+                                help='configuration json file to pass into the \
+                                      algorithm')
 
         # Parser for sub-command "proto"
         proto_choices = \
@@ -77,6 +83,13 @@ class MSReactClient:
         parser_proto = \
             subparsers.add_parser('proto',
                                   help='command for prototyping new algorithms')
+                                  
+        parser_proto.add_argument('-c',
+                                  metavar = 'config',
+                                  dest = 'config',
+                                  help='configuration json file to pass into \
+                                  the algorithm')
+                                  
         parser_proto.add_argument('alg', choices = proto_choices,
                                  metavar = 'algorithm', default = 'monitor',
                                  help=f'algorithm to use during the acquisition, \
@@ -114,6 +127,13 @@ class MSReactClient:
                                    metavar = 'app', default = 'example',
                                    help=f'custom app to run, \
                                    choices: {", ".join(app_choices)}')
+                                   
+        parser_custom.add_argument('-c',
+                                   metavar = 'config',
+                                   dest = 'config',
+                                   help='configuration json file to pass into \
+                                   the algorithm')
+        
         # TODO - This won't be an input, but will be retreived from 
         # the middleware
         parser_custom.add_argument('address',
@@ -178,7 +198,7 @@ class MSReactClient:
 
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, "Tribrid"):
+            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
                 await self.algo_manager.run_algorithm()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
@@ -221,7 +241,7 @@ class MSReactClient:
             
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, "Tribrid"):
+            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
                 await self.algo_manager.run_algorithm()
                 await self.inst_client.request_shut_down_server()
             else:
@@ -260,7 +280,7 @@ class MSReactClient:
                 
                 # TODO: Instrument info should be collected and provided to the 
                 #       function later.
-                if self.algo_manager.select_algorithm(args.suite, "Tribrid"):
+                if self.algo_manager.select_algorithm(args.suite, args.config, "Tribrid"):
                     await self.algo_manager.run_algorithm()
                 else:
                     self.logger.error(f"Failed loading {args.suite}")
@@ -268,7 +288,7 @@ class MSReactClient:
             else:
                 self.logger.error("Connection Failed")
             
-    def __load_dict_config(self):
+    def __load_log_config(self):
         config = {}
         with open("pymsreact\\log_conf.json", "r", encoding="utf-8") as fd:
             config = json.load(fd)
