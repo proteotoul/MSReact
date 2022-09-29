@@ -105,7 +105,7 @@ class MockClient(InstrumentClient):
         """
         if scan_level_range[0] <= scan_level_range[1]:
             if scan_level_range[0] != scan_level_range[1]:
-                self.logger.info('Setting ms scan transfer level to between ' 
+                self.logger.info('Setting ms scan transfer interval to between ' 
                             f'MS{scan_level_range[0]} and MS{scan_level_range[1]}')
             else:
                 self.logger.info(f'Setting ms scan transfer level to MS{scan_level_range[0]}')

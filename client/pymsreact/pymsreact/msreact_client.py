@@ -139,7 +139,10 @@ class MSReactClient:
         parser_custom.add_argument('address',
                                    help='address to the MSReact server')
 
-        return parser.parse_args()
+
+        self.args = parser.parse_args()
+        
+        return self.args
         
     def instrument_client_cb(self, msg_id, args = None):
         if (instrument.InstrMsgIDs.SCAN == msg_id):
@@ -169,6 +172,9 @@ class MSReactClient:
             await self.inst_client.stop_acquisition()
         elif (AcqMsgIDs.REQUEST_DEF_SCAN_PARAM_UPDATE == msg_id):
             await self.inst_client.update_default_scan_params(args)
+        elif (AcqMsgIDs.SET_TX_SCAN_LEVEL == msg_id):
+            if self.args.mode == "mock":
+                await self.inst_client.set_ms_scan_tx_level(args)
         elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
         
@@ -195,7 +201,7 @@ class MSReactClient:
             
             # Collect possible parameters for requesting custom scans
             possible_params = await self.inst_client.get_possible_params()
-
+            
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
@@ -236,8 +242,6 @@ class MSReactClient:
             
             # Collect possible parameters for requesting custom scans
             possible_params = await self.inst_client.get_possible_params()
-            
-            #self.inst_client.set_ms_scan_tx_level
             
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
