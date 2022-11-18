@@ -38,6 +38,8 @@ class MSReactProtocol(BaseProtocol):
         SERVER_SW_VER_RSP           = 4
         GET_SERVER_PROTO_VER_CMD    = 5
         SERVER_PROTO_VER_RSP        = 6
+        GET_ACQ_RAW_FILE_NAME       = 7
+        ACQ_RAW_FILE_NAME_RSP       = 8
         
         # Instrument message group
         GET_AVAILABLE_INSTR_CMD     = 20

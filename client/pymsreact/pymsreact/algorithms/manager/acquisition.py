@@ -32,6 +32,7 @@ class AcqMsgIDs(Enum):
     SET_TX_SCAN_LEVEL = 11
     ENABLE_PLOT = 12
     DISABLE_PLOT = 13
+    REQUEST_RAW_FILE_NAME = 14
     
 class AcqStatIDs(Enum):
     """
@@ -217,6 +218,9 @@ class Acquisition:
            effect.
         """
         self.queue_out.put((AcqMsgIDs.SET_TX_SCAN_LEVEL, self.scan_tx_interval))
+        
+    def get_raw_file_name(self):
+        self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner

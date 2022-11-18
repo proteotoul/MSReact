@@ -177,6 +177,8 @@ class MSReactClient:
                 await self.inst_client.set_ms_scan_tx_level(args)
         elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
+        elif (AcqMsgIDs.REQUEST_RAW_FILE_NAME == msg_id):
+            await self.inst_client.request_raw_file_name()
         
     async def run_on_instrument(self, loop, args):
     
