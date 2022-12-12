@@ -353,7 +353,20 @@ class InstrumentClient:
         if (self.proto.MessageIDs.OK_RSP != msg):
             self.logger.error("Problem with updating default scan parameters.")
             raise Exception("Problem with updating default scan parameters.")
-        
+            
+    async def request_raw_file_name(self):
+        self.logger.info('Requesting raw file name from the mock.')
+        raw_file_id = ""
+        await self.proto.send_message(self.proto.MessageIDs.GET_ACQ_RAW_FILE_NAME)
+        msg, payload = await self.__wait_for_response()
+        if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP != msg):
+            self.logger.error("Problem with getting raw file name!")
+            raise Exception("Problem with getting raw file name!")
+        else:
+            raw_file_id = payload
+        return raw_file_id
+
+            
     async def listen_for_messages(self):
         """Listens for messages from the server."""
         self.listening = True

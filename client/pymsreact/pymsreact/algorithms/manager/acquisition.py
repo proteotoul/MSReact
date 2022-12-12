@@ -29,8 +29,10 @@ class AcqMsgIDs(Enum):
     ACQUISITION_ENDED = 8
     ERROR = 9
     REQUEST_DEF_SCAN_PARAM_UPDATE = 10
-    ENABLE_PLOT = 11
-    DISABLE_PLOT = 12
+    SET_TX_SCAN_LEVEL = 11
+    ENABLE_PLOT = 12
+    DISABLE_PLOT = 13
+    REQUEST_RAW_FILE_NAME = 14
     
 class AcqStatIDs(Enum):
     """
@@ -67,6 +69,7 @@ class CentroidFields(IntEnum):
     MZ = 7
 
 DEFAULT_NAME = "Default Acquisition"
+DEFAULT_SCAN_TX_INTERVAL = [1, 1]
 
 class Acquisition:
     """
@@ -99,6 +102,7 @@ class Acquisition:
            algorithm runner
         """
         self.name = DEFAULT_NAME
+        self.scan_tx_interval = DEFAULT_SCAN_TX_INTERVAL
         
         self.queue_in = queue_in
         self.queue_out = queue_out
@@ -207,6 +211,16 @@ class Acquisition:
             string-string dictionary in the form of parameter_name : value, eg. 
             "PrecursorMass" : "800.25" """
         self.queue_out.put((AcqMsgIDs.REQUEST_DEF_SCAN_PARAM_UPDATE, params))
+        
+    def set_tx_scan_interval(self):
+        """Sets the order of MS scans to be transmitted by the Mock server. In
+           case the client is not used with the Mock, this command has no
+           effect.
+        """
+        self.queue_out.put((AcqMsgIDs.SET_TX_SCAN_LEVEL, self.scan_tx_interval))
+        
+    def get_raw_file_name(self):
+        self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
@@ -317,6 +331,7 @@ def acquisition_process(module_name,
     # could be considered.
     # intra_acq_thread.start()
     acquisition.logger.info('Signal "Ready for acquisition".')
+    acquisition.set_tx_scan_interval()
     acquisition.signal_ready_for_acquisition()
     intra_acq_thread.start()
     # Wait for acquisition to finish and signal it to the thread when it happens
