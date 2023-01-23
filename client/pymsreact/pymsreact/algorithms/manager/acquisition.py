@@ -49,14 +49,15 @@ class ScanFields(IntEnum):
     """
     Enum to decode receive scans
     """
-    CENTROID_COUNT = 0
-    CENTROIDS = 1
-    DETECTOR_NAME = 2
-    MS_SCAN_LEVEL = 3
-    PRECURSOR_CHANGE = 4
-    PRECURSOR_MASS = 5
-    RETENTION_TIME = 6
-    SCAN_NUMBER = 7
+    ACCESS_ID = 0
+    CENTROID_COUNT = 1
+    CENTROIDS = 2
+    DETECTOR_NAME = 3
+    MS_SCAN_LEVEL = 4
+    PRECURSOR_CHANGE = 5
+    PRECURSOR_MASS = 6
+    RETENTION_TIME = 7
+    SCAN_NUMBER = 8
     
 class CentroidFields(IntEnum):
     CHARGE = 0
