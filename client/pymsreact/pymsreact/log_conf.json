@@ -2,7 +2,7 @@
     "version": 1,
     "disable_existing_loggers": true,
     "formatters": {
-        "msReactorFormatter": {
+        "msReactFormatter": {
             "format": "[%(asctime)s] %(levelname)s: %(module)s.%(funcName)s\n\t%(message)s"
         }
     },
@@ -10,26 +10,26 @@
         "console": {
             "level": "INFO",
             "class": "logging.StreamHandler",
-            "formatter": "msReactorFormatter",
+            "formatter": "msReactFormatter",
             "stream": "ext://sys.stdout"
         },
         "file": {
             "level": "INFO",
             "class": "logging.FileHandler",
-            "formatter": "msReactorFormatter",
+            "formatter": "msReactFormatter",
             "filename": "output/log/pymsreact_log",
             "mode": "w",
             "encoding": "utf-8"
         }
     },
     "loggers": {
-        "msReactorLogger": {
+        "msReactLogger": {
             "handlers": [
                 "console",
                 "file"
             ],
             "level": "INFO",
-            "qualname": "msReactorLogger",
+            "qualname": "msReactLogger",
             "propagate": 0
         }
     },
@@ -38,6 +38,6 @@
             "console",
             "file"
         ],
-        "level": "INFO"
+        "level": "WARNING"
     }
 }
