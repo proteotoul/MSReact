@@ -389,18 +389,19 @@ FodyWeavers.xsd
 
 # Data files too large to be commited
 MSReactServer/Test/Data/Excluded
-
+client/pymsreact/data/Excluded
 
 # Client documentation 
 client/pymsreact/docs/build
 client/pymsreact/docs/source/_templates
 client/pymsreact/docs/source/_static
 
-# Servers within client
+# Mock servers within client
 client/pymsreact/data/mock
 
 # Visual Studio user specific information
 /MSReactServer/MSReactServer/*.user
 
-# Generated files in the output folder
+# Generated files in the output folders
 client/pymsreact/output
+client/pymsreact/pymsreact/utils/output
