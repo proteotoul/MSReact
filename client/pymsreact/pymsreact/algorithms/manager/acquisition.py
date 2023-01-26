@@ -47,14 +47,14 @@ class AcqStatIDs(Enum):
     
 class ScanFields(IntEnum):
     """
-    Enum to decode receive scans
+    Enum to decode received scans
     """
     ACCESS_ID = 0
     CENTROID_COUNT = 1
     CENTROIDS = 2
     DETECTOR_NAME = 3
     MS_SCAN_LEVEL = 4
-    PRECURSOR_CHANGE = 5
+    PRECURSOR_CHARGE = 5
     PRECURSOR_MASS = 6
     RETENTION_TIME = 7
     SCAN_NUMBER = 8
