@@ -7,8 +7,8 @@ from algorithms.manager.acquisition import CentroidFields as cf
 
 class RealTimeMGFWriter:
     
-    BUF_LEN = 20 # Number of scans to store in the buffer
-    WRITE_RATE = 2 # Per minute rate of writing to file
+    BUF_LEN = 30 # Number of scans to store in the buffer
+    WRITE_RATE = 3 # Per minute rate of writing to file
        
     def __init__(self, file_path, buffer = BUF_LEN, rate = WRITE_RATE):
         self._file_path = file_path
@@ -45,11 +45,10 @@ class RealTimeMGFWriter:
                     f"controllerNumber={1} " + \
                     f"scan={scan[sf.SCAN_NUMBER]}\n" + \
                     f"SCANS={scan[sf.SCAN_NUMBER]}\n" + \
-                    f"RTINSECONDS={scan[sf.RETENTION_TIME]}\n" + \
+                    f"RTINSECONDS={60 * scan[sf.RETENTION_TIME]}\n" + \
                     f"PEPMASS={scan[sf.PRECURSOR_MASS]}\n"
                     
-        self._logger.info(f"Num centroids: {len(scan[sf.CENTROIDS])}")
-        spectra = "".join(f"{round(c[cf.MZ], 1)} {c[cf.INTENSITY]}\n"
+        spectra = "".join(f"{round(c[cf.MZ], 5)} {round(c[cf.INTENSITY], 3)}\n"
                           for c in scan[sf.CENTROIDS])
                     
         scan_tail = "END IONS\n\n"
@@ -57,13 +56,13 @@ class RealTimeMGFWriter:
         return scan_head + spectra + scan_tail
     
     def _write_to_file(self):
-        self._logger("Written to file")
+        self._logger.info("Written to file")
         self._file_object.write(self._mgf_string)
         self._scan_count = 0
         self._mgf_string = ""
         
     def _write_worker(self):
-        self._logger.info("Write worker started")
+        self._logger.info("MGF writer starting...")
         while True:
             try:
                 scan = self._scan_buffer.get_nowait()
@@ -78,7 +77,7 @@ class RealTimeMGFWriter:
                 self._write_to_file()
                 break
             else:
-                time.sleep(0.1)
+                time.sleep(0.025)
         
         
 if __name__ == "__main__":

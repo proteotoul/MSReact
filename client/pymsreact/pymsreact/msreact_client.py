@@ -151,7 +151,7 @@ class MSReactClient:
             self.logger.info('Received finished acquisition message.')
             self.algo_manager.acquisition_ended()
         elif (instrument.InstrMsgIDs.ERROR == msg_id):
-            self.logger.error(f'Receved error message from instrument: {args}')
+            self.logger.error(f'Received error message from instrument: {args}')
             self.algo_manager.instrument_error()
         
     async def algorithm_runner_cb(self, msg_id, args = None):
@@ -191,19 +191,26 @@ class MSReactClient:
                                         self.instrument_client_cb)
 
         self.logger.info(f'Instrument address: {args.address}')
+        
+        # Connect to the server
         success = await self.inst_client.connect_to_server(args.address)
         if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            loop.create_task(self.inst_client.listen_for_messages())
+            # Start listening to messages from the server
+            listening_task = \
+                loop.create_task(self.inst_client.listen_for_messages())
+            
             # Select instrument TODO - This should be instrument discovery
             await self.inst_client.select_instrument(1)
             
-            # Collect possible parameters for requesting custom scans
+            # Request possible parameters for requesting custom scans
             possible_params = await self.inst_client.get_possible_params()
             
+            # Try to select the requested algorithm, and if the algorithm 
+            # selection was successful run the algorithm.
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
@@ -213,8 +220,11 @@ class MSReactClient:
             
             self.logger.info("Unsubscribe from scans.")
             await self.inst_client.unsubscribe_from_scans()
+            self.logger.info("Stop the listening loop.")
+            listening_task.cancel()
             self.logger.info("Disconnect from server.")
             await self.inst_client.disconnect_from_server()
+            self.logger.info("Client is shutting down.")
             
         else:
             self.logger.error("Connection Failed")
@@ -238,7 +248,8 @@ class MSReactClient:
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            loop.create_task(self.inst_client.listen_for_messages())
+            listening_task = \
+                loop.create_task(self.inst_client.listen_for_messages())
             # Select instrument TODO - This should be instrument discovery
             await self.inst_client.select_instrument(1)
             
@@ -249,10 +260,17 @@ class MSReactClient:
             #       function later.
             if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
                 await self.algo_manager.run_algorithm()
-                await self.inst_client.request_shut_down_server()
             else:
                 self.logger.error(f"Failed loading {args.alg}")
-                self.inst_client.terminate_inst_server()
+                self.inst_client.terminate_mock_server()
+                
+            self.logger.info("Unsubscribe from scans.")
+            await self.inst_client.unsubscribe_from_scans()
+            self.logger.info("Stop the listening loop.")
+            listening_task.cancel()
+            self.logger.info("Request shut down of mock server.")
+            await self.inst_client.request_shut_down_server()
+            self.logger.info("Client is shutting down.")
         else:
             self.logger.error("Connection Failed")
             self.inst_client.terminate_mock_server()
@@ -277,7 +295,8 @@ class MSReactClient:
                 # Wait a bit after connection
                 await asyncio.sleep(1)
                 
-                loop.create_task(self.inst_client.listen_for_messages())
+                listening_task = \
+                    loop.create_task(self.inst_client.listen_for_messages())
                 # Select instrument TODO - This should be instrument discovery
                 await self.inst_client.select_instrument(1)
                 
@@ -290,6 +309,14 @@ class MSReactClient:
                     await self.algo_manager.run_algorithm()
                 else:
                     self.logger.error(f"Failed loading {args.suite}")
+                    
+                self.logger.info("Unsubscribe from scans.")
+                await self.inst_client.unsubscribe_from_scans()
+                self.logger.info("Stop the listening loop.")
+                listening_task.cancel()
+                self.logger.info("Disconnect from server.")
+                await self.inst_client.disconnect_from_server()
+                self.logger.info("Client is shutting down.")
                 
             else:
                 self.logger.error("Connection Failed")
@@ -336,6 +363,7 @@ if __name__ == "__main__":
         try:
             loop.run_until_complete(client.run_on_instrument(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('proto' == args.command):
@@ -349,11 +377,13 @@ if __name__ == "__main__":
                 client.logger.error('Please select a mode to run the selected' +
                                     ' algorithm prototype. See help [-h].')
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('test' == args.command):
         try:
             loop.run_until_complete(client.test_app(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()

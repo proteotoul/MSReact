@@ -187,6 +187,7 @@ class AlgorithmManager:
             loop.create_task(self.__process_acquisition_requests())
             await self.__execute_algorithm(loop)
         except Exception as e:
+            self.logger.error(f'An exception occured:')
             traceback.print_exc()
         self.listening.set()
         
@@ -216,27 +217,32 @@ class AlgorithmManager:
                                        acquisition_process, 
                                        acquisition.__module__,
                                        acquisition.__name__,
-                                       self.acq_in_q, 
+                                       self.acq_in_q,
                                        self.acq_out_q,
                                        self.fconf)
         self.logger.info(f'Algorithm execution ended.')
                                        
     async def __process_acquisition_requests(self):
-        """Private method, listens to requests from the acquisitions and forwards
-        them to the application."""
+        """Private method, listens to requests from the acquisitions and 
+        forwards them to the application."""
         try:
             self.logger.info(f'Process acquisition requests function entered.')
-            while not self.listening.is_set():
+            while True:
                 try:
-                    item = self.acq_out_q.get_nowait()
-                    if isinstance(item, logging.LogRecord):
-                        logger = logging.getLogger(item.name)
-                        logger.handle(item)
-                    else:
-                        await self.app_cb(*item)
+                    await self.__process_queue_items()
                 except Empty:
-                    pass
+                    if self.listening.is_set():
+                        break
                 await asyncio.sleep(0.001)
             self.logger.info(f'Process acquisition requests loop exited.')
         except Exception as e:
+            self.logger.error(f'An exception occured:')
             traceback.print_exc()
+            
+    async def __process_queue_items(self):
+        item = self.acq_out_q.get_nowait()
+        if isinstance(item, logging.LogRecord):
+            logger = logging.getLogger(item.name)
+            logger.handle(item)
+        else:
+            await self.app_cb(*item)

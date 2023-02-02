@@ -343,4 +343,5 @@ def acquisition_process(module_name,
     intra_acq_thread.join()
     # TODO: For now, it is the user's responsibility to check whether an error occured during
     #       the acquisition and decide what kind of activities to carry out in each case.
+    acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_POST_ACQUISITION)
     acquisition.post_acquisition()
