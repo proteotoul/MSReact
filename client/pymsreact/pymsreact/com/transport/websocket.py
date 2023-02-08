@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import socket
-from .base import BaseTransport, TransportStates, TransportException
+from .base import BaseTransport, TransportStates, TransportErrors, TransportException
 import websockets as ws
 
 class WebSocketTransport(BaseTransport):
@@ -106,30 +106,28 @@ class WebSocketTransport(BaseTransport):
         else:
             raise TransportException(
                 "Cannot disconnect from uri when already disconnected!", 
-                "Invalid WebSocketTransport State")
+                TransportErrors.INVALID_STATE_ERROR)
 
     async def receive(self):
         """Listens for messages from the connected server over WebSocket"""
         message = ""
-        # !!!!!!! TODO: Connection loss was started to be refactored !!!!
         if TransportStates.CONNECTED == self.state:
             try:
                 message = await self.ws_protocol.recv()
             except ws.exceptions.ConnectionClosedError as ex:
                 self.logger.error(f"Lost connection to server at {self.uri}")
                 self.state = TransportStates.RECONNECTING
-                result = self.reconnect()
+                result = await self.reconnect()
                 if result:
                     self.state = TransportStates.CONNECTED
                 else:
                     self.state = TransportStates.DISCONNECTED
-                    raise TransportException("Disconnected from server with error",
-                                             f"Error: {ex}") from ex
+                    raise TransportException("Disconnected from server with error.",
+                                             TransportErrors.DISCONNECTION_ERROR) from ex
         else:
             raise TransportException(
                 "Cannot listen on WebSocket when not connected!",
-                "Invalid WebSocketTransport State")
-        # !!!!!!! TODO: Connection loss was started to be refactored !!!!
+                TransportErrors.INVALID_STATE_ERROR)
         return message
 
     async def send(self, message):
@@ -143,17 +141,17 @@ class WebSocketTransport(BaseTransport):
             await self.ws_protocol.send(message)
         elif TransportStates.RECONNECTING == self.state:
             # Messages to be sent during reconnection phase are ignored,
-            # in order not to introduce a "lag" up on reconnection.
+            # in order not to introduce a "lag" and 'flush' up on reconnection.
             pass
         else:
             raise TransportException(
                 "Cannot send on WebSocket when not connected!",
-                "Invalid WebSocketTransport State")
+                TransportErrors.INVALID_STATE_ERROR)
                 
     async def reconnect(self):
-        for i in range(RECONNECTION_NUM_TRIALS):
-            self.logger.info(f"Reconnection attempt number: {i} to {self.uri}")
-            result = self.connect()
+        for i in range(self.RECONNECTION_NUM_TRIALS):
+            self.logger.info(f"Reconnection attempt: {i + 1} to {self.uri}")
+            result =  await self.connect()
             if result:
                 break
         return result

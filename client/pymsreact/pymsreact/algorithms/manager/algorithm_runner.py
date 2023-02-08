@@ -182,14 +182,19 @@ class AlgorithmManager:
         algorithm."""
         # Note: Consider handling runtime error that can be raised if there is
         # no active event loop
+        no_error = True
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self.__process_acquisition_requests())
+            acq_req_task = loop.create_task(self.__process_acquisition_requests())
             await self.__execute_algorithm(loop)
         except Exception as e:
             self.logger.error(f'An exception occured:')
             traceback.print_exc()
+            no_error = False
+        # Wait for the _process_acquisition_requests task to finish.
         self.listening.set()
+        await acq_req_task
+        return no_error
         
     def __validate_fconf(self, fconf):
         if fconf is not None:

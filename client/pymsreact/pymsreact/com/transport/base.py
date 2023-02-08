@@ -7,7 +7,12 @@ class TransportStates(IntEnum):
     RECONNECTING    = 2
     RECEIVE         = 3
     SEND_MSG        = 4
-
+    
+class TransportErrors(IntEnum):
+    NO_ERROR            = 0
+    INVALID_STATE_ERROR = 1
+    DISCONNECTION_ERROR = 2
+    
 class BaseTransport:
     """
     Abstract class for transport layers
@@ -63,5 +68,6 @@ class TransportException(Exception):
     def __init__(self, message, errors):
         super().__init__(message)
         self.errors = errors
-        self.logger = logging.getLogger(__name__)
-        self.logger.error(f'Errors:{self.errors}')
+        self.logger = logging.getLogger("TransportException")
+        self.logger.error(f'TransportException, error code: {self.errors} ' +
+                          f'error name: {TransportErrors(self.errors).name}')

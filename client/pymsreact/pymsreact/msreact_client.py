@@ -14,10 +14,15 @@ import traceback
 from algorithms.manager.acquisition import AcqMsgIDs
 from algorithms.manager.algorithm_runner import AlgorithmManager
 from custom_apps.manager import CustomAppManager
+from enum import IntEnum
 
 import cProfile
 
 VERSION = 'v0.0'
+
+class ClientStates(IntEnum):
+    NO_ERROR    = 0
+    ERROR       = 1
 
 class MSReactClient:
 
@@ -43,6 +48,8 @@ class MSReactClient:
         # Instantiate the algorithm and custom app managers
         self.algo_manager = AlgorithmManager(self.algorithm_runner_cb)
         self.cusom_app_manager = CustomAppManager()
+        
+        self.state = ClientStates.NO_ERROR
         
     def parse_client_arguments(self):
         # Top level parser
@@ -153,6 +160,7 @@ class MSReactClient:
         elif (instrument.InstrMsgIDs.ERROR == msg_id):
             self.logger.error(f'Received error message from instrument: {args}')
             self.algo_manager.instrument_error()
+            self.state = ClientStates.ERROR
         
     async def algorithm_runner_cb(self, msg_id, args = None):
         if (AcqMsgIDs.REQUEST_SCAN == msg_id):
@@ -177,6 +185,10 @@ class MSReactClient:
                 await self.inst_client.set_ms_scan_tx_level(args)
         elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
+            # Should let the instrument manager know that there was an error in
+            # the algorithm manager.
+            self.inst_client.instrument_clean_up()
+            self.state = ClientStates.ERROR
         elif (AcqMsgIDs.REQUEST_RAW_FILE_NAME == msg_id):
             await self.inst_client.request_raw_file_name()
         
@@ -199,16 +211,10 @@ class MSReactClient:
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            # Start listening to messages from the server
-            listening_task = \
-                loop.create_task(self.inst_client.listen_for_messages())
-            
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_client.select_instrument(1)
-            
-            # Request possible parameters for requesting custom scans
-            possible_params = await self.inst_client.get_possible_params()
-            
+            # Start listening for messages from the server, select instrument,
+            # and get possible parameters.
+            await self.inst_client.setup_instrument_connection(1)
+
             # Try to select the requested algorithm, and if the algorithm 
             # selection was successful run the algorithm.
             # TODO: Instrument info should be collected and provided to the 
@@ -218,12 +224,8 @@ class MSReactClient:
             else:
                 self.logger.error(f"Failed loading {args.alg}")
             
-            self.logger.info("Unsubscribe from scans.")
-            await self.inst_client.unsubscribe_from_scans()
-            self.logger.info("Stop the listening loop.")
-            listening_task.cancel()
-            self.logger.info("Disconnect from server.")
-            await self.inst_client.disconnect_from_server()
+            if self.state != ClientStates.ERROR:
+                self.inst_client.instrument_clean_up()
             self.logger.info("Client is shutting down.")
             
         else:
@@ -248,14 +250,10 @@ class MSReactClient:
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            listening_task = \
-                loop.create_task(self.inst_client.listen_for_messages())
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_client.select_instrument(1)
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = await self.inst_client.get_possible_params()
-            
+            # Start listening for messages from the server, select instrument,
+            # and get possible parameters.
+            await self.inst_client.setup_instrument_connection(1)
+
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
             if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
@@ -295,14 +293,8 @@ class MSReactClient:
                 # Wait a bit after connection
                 await asyncio.sleep(1)
                 
-                listening_task = \
-                    loop.create_task(self.inst_client.listen_for_messages())
-                # Select instrument TODO - This should be instrument discovery
-                await self.inst_client.select_instrument(1)
-                
-                # Collect possible parameters for requesting custom scans
-                possible_params = await self.inst_client.get_possible_params()
-                
+                await self.inst_client.setup_instrument_connection(1)
+
                 # TODO: Instrument info should be collected and provided to the 
                 #       function later.
                 if self.algo_manager.select_algorithm(args.suite, args.config, "Tribrid"):

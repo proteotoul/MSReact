@@ -3,6 +3,7 @@
 import asyncio
 import msreact_client
 import pathlib
+import traceback
 
 def main():
     # Create output and log folder if it doesn't exist yet

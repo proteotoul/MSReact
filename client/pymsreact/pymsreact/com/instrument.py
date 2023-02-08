@@ -73,9 +73,9 @@ class InstrumentClient:
         
         if address is not None:
             self.address = address
-            success = await self.proto.tl.connect(self.address)
+            success = await self.proto.connect(self.address)
         else:
-            success = await self.proto.tl.connect()
+            success = await self.proto.connect()
         
         return success
         
@@ -83,7 +83,7 @@ class InstrumentClient:
         """ Disconnects from the server to which the client is currently 
         connected. """
         self.address = None
-        await self.proto.tl.disconnect()
+        await self.proto.disconnect()
         
     async def get_protocol_version(self):
         """Retrieves the protocol version of the server that is currently 
@@ -365,18 +365,38 @@ class InstrumentClient:
         else:
             raw_file_id = payload
         return raw_file_id
-
+        
+    async def setup_instrument_connection(self, inst_num):
+        # Start listening from messages from the client
+        loop = asyncio.get_running_loop()
+        self.listening_task = \
+            loop.create_task(self.listen_for_messages())
             
+        # Select instrument TODO - This should be instrument discovery
+        await self.select_instrument(inst_num)
+        
+        # Collect possible parameters for requesting custom scans
+        possible_params = await self.get_possible_params()
+        
+    async def instrument_clean_up(self):
+        self.logger.info("Unsubscribe from scans.")
+        await self.unsubscribe_from_scans()
+        self.logger.info("Stop the listening loop.")
+        self.listening_task.cancel()
+        self.logger.info("Disconnect from server.")
+        await self.inst_client.disconnect_from_server()
+        
     async def listen_for_messages(self):
         """Listens for messages from the server."""
         self.listening = True
         self.logger.info('Listening for messages started.')
         while self.listening:
             msg, payload = await self.proto.receive_message()
-            await self.__dispatch_message(msg, payload)
+            self.listening = await self.__dispatch_message(msg, payload)
         self.logger.info('Exited listening for messages loop.')
     
     async def __dispatch_message(self, msg, payload):
+        no_error = True
         msg_type = msg.name[-3:]
         if ('RSP' == msg_type):
             async with self.resp_cond:
@@ -390,10 +410,11 @@ class InstrumentClient:
                 self.app_cb(InstrMsgIDs.SCAN, payload)
             elif (self.proto.MessageIDs.ERROR_EVT == msg):
                 self.app_cb(InstrMsgIDs.ERROR, None)
+                no_error = False
         else:
             pass
-            
             # That is an error situation
+        return no_error
         
     async def __wait_for_response(self):
         async with self.resp_cond:
@@ -402,4 +423,6 @@ class InstrumentClient:
             self.resp = None
         self.logger.info(f'Response: {received_resp.name}')
         return received_resp, resp_payload
+        
+    
    

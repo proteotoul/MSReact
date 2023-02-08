@@ -1,6 +1,8 @@
 import msgpack
 from enum import IntEnum
-from .base import BaseProtocol
+from .base import BaseProtocol, ProtocolErrors, ProtocolException
+from ..transport.base import TransportException
+import logging
 
 class MSReactProtocol(BaseProtocol):
     """
@@ -73,26 +75,48 @@ class MSReactProtocol(BaseProtocol):
     
     def __init__(self, transport_layer):
         self.tl = transport_layer
+        self.logger = logging.getLogger(__name__)
+        
+    async def connect(self, address = None):
+        return await self.tl.connect(address)
+        
+    async def disconnect(self):
+        await self.proto.tl.disconnect()
         
     async def send_message(self, msg, payload = None):
         if (msg in self.MessageIDs):
-            if (None == payload):
-                await self.tl.send(msg.to_bytes(1, 'big'))
-            else:
-                msg = msg.to_bytes(1, 'big') + msgpack.packb(payload)
-                await self.tl.send(msg)
+            try:
+                msg_packed = msg.to_bytes(1, 'big')
+                if None != payload:
+                    msg_packed = msg_packed + msgpack.packb(payload)
+                await self.tl.send(msg_packed)
+            except TransportException as tex:
+                raise ProtocolException("Error while trying to send message.", 
+                                        ProtocolErrors.TRANSPORT_ERROR) from tex
+            except Exception as ex:
+                raise ProtocolException("Error while trying send message.",
+                                        ProtocolErrors.MESSAGE_PACKING_ERROR) from ex
         else:
-            #TODO - Exception
-            pass
+            raise ProtocolException("Sending message failed: Incorrect message ID",
+                                    ProtocolErrors.MESSAGE_PACKING_ERROR)
     
     async def receive_message(self):
-        msg = await self.tl.receive()
-        # Parse messages
-        msg_id = self.MessageIDs(msg[0])
-        
-        if (1 < len(msg)):
-            payload = msgpack.unpackb(msg[1:])
-        else:
-            payload = None
+        msg_id = self.MessageIDs.ERROR_EVT
+        payload = None
+        try:
+            msg = await self.tl.receive()
+            # Parse messages
+            msg_id = self.MessageIDs(msg[0])
             
+            if (1 < len(msg)):
+                payload = msgpack.unpackb(msg[1:])
+        except TransportException as tex:
+            # Do not raise exception, an ERROR_EVT will be propagated to 
+            # to the higher level.
+            self.logger.error("Error while trying to receive message: " 
+                              + f"{tex}")
+        except Exception as ex:
+            raise ProtocolException("Error while trying parsing received message.",
+                                    ProtocolErrors.MESSAGE_PARSING_ERROR) from ex
         return (msg_id, payload)
+        
