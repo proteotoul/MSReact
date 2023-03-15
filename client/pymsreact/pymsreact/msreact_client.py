@@ -187,7 +187,7 @@ class MSReactClient:
             self.logger.error(args)
             # Should let the instrument manager know that there was an error in
             # the algorithm manager.
-            self.inst_client.instrument_clean_up()
+            await self.inst_client.instrument_clean_up()
             self.state = ClientStates.ERROR
         elif (AcqMsgIDs.REQUEST_RAW_FILE_NAME == msg_id):
             await self.inst_client.request_raw_file_name()
@@ -225,7 +225,7 @@ class MSReactClient:
                 self.logger.error(f"Failed loading {args.alg}")
             
             if self.state != ClientStates.ERROR:
-                self.inst_client.instrument_clean_up()
+                await self.inst_client.instrument_clean_up()
             self.logger.info("Client is shutting down.")
             
         else:

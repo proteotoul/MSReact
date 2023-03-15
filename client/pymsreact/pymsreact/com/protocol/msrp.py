@@ -81,7 +81,7 @@ class MSReactProtocol(BaseProtocol):
         return await self.tl.connect(address)
         
     async def disconnect(self):
-        await self.proto.tl.disconnect()
+        await self.tl.disconnect()
         
     async def send_message(self, msg, payload = None):
         if (msg in self.MessageIDs):

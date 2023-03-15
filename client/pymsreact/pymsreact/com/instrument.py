@@ -384,7 +384,7 @@ class InstrumentClient:
         self.logger.info("Stop the listening loop.")
         self.listening_task.cancel()
         self.logger.info("Disconnect from server.")
-        await self.inst_client.disconnect_from_server()
+        await self.disconnect_from_server()
         
     async def listen_for_messages(self):
         """Listens for messages from the server."""
