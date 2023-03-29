@@ -116,9 +116,9 @@ class AlgorithmManager:
                             value is not Algorithm):
                             fconf = \
                                 self.__validate_fconf(current_dir + '\\'
-                                                      + info.name + '\\' 
+                                                      + info.name + '\\'
                                                       + subinfo.name
-                                                      + '.json')
+                                                      + '.hocon')
                             self.ALGO_LISTS[info.name].append((value, fconf))
     
     def select_algorithm(self, algorithm, fconf, instrument_info):
@@ -200,7 +200,7 @@ class AlgorithmManager:
         if fconf is not None:
             file = Path(fconf)
             validated_fconf = \
-                fconf if (file.is_file() and file.suffix == '.json') else None
+                fconf if (file.is_file() and file.suffix == '.hocon') else None
         else:
             validated_fconf = fconf
         return validated_fconf

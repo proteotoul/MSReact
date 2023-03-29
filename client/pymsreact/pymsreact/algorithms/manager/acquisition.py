@@ -14,6 +14,9 @@ from enum import Enum, IntEnum
 from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
+from pprint import pprint
+
+from pyhocon import ConfigFactory
 
 class AcqMsgIDs(Enum):
     """
@@ -130,13 +133,14 @@ class Acquisition:
         
     def configure(self, fconf):
         if fconf is not None:
-            with open(fconf) as f:
-                self.config = json.load(f)
+            configtree = ConfigFactory.parse_file(fconf)
+            self.config = \
+                json.loads(json.dumps(configtree.as_plain_ordered_dict()))
         else:
             self.config = None
             
         self.logger.info('Acquisition was configured with the following ' +
-                         f'configuration: {self.config}')
+                         f'configuration: {pprint(self.config)}')
     
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
