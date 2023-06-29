@@ -36,6 +36,7 @@ class AcqMsgIDs(Enum):
     ENABLE_PLOT = 12
     DISABLE_PLOT = 13
     REQUEST_RAW_FILE_NAME = 14
+    REQUEST_LAST_RAW_FILE = 15
     
 class AcqStatIDs(Enum):
     """
@@ -226,6 +227,9 @@ class Acquisition:
         
     def get_raw_file_name(self):
         self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
+        
+    def get_last_raw_file(self):
+        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, None))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner

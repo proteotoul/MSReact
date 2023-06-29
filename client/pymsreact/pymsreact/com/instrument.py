@@ -2,6 +2,9 @@ import asyncio
 import csv
 import logging
 import multiprocessing
+import time
+import os
+import requests
 from enum import Enum
 from multiprocessing import Queue
 from queue import Empty, Full
@@ -324,7 +327,7 @@ class InstrumentClient:
         
     async def start_acquisition(self):
         """Requests the start of an acquisition from server."""
-        self.logger.info('Start transferring scans from the raw file by the mock')
+        self.logger.info('Start receiving scans from the instrument')
         await self.proto.send_message(self.proto.MessageIDs.START_ACQ_CMD)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
@@ -333,7 +336,7 @@ class InstrumentClient:
             
     async def stop_acquisition(self):
         """Requests the stop of the current acquisition from server."""
-        self.logger.info('Stop transferring scans from the raw file by the mock')
+        self.logger.info('Stop receiving scans from the instrument')
         await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ_CMD)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
@@ -355,16 +358,29 @@ class InstrumentClient:
             raise Exception("Problem with updating default scan parameters.")
             
     async def request_raw_file_name(self):
-        self.logger.info('Requesting raw file name from the mock.')
+        """Requests the name of the current acquisitions raw file"""
+        self.logger.info('Requesting raw file name from the instrument.')
         raw_file_id = ""
         await self.proto.send_message(self.proto.MessageIDs.GET_ACQ_RAW_FILE_NAME)
-        msg, payload = await self.__wait_for_response()
+            
         if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP != msg):
             self.logger.error("Problem with getting raw file name!")
             raise Exception("Problem with getting raw file name!")
         else:
             raw_file_id = payload
         return raw_file_id
+        
+    async def request_last_acquisition_file(self):
+        """Requests the raw file of the last acquisition"""
+        self.logger.info('Request latest acquisition raw file from server.')
+        await self.proto.send_message(self.proto.MessageIDs.GET_LAST_ACQ_FILE_CMD)
+        time.sleep(1)
+        msg, payload = await self.__wait_for_response()
+        if (self.proto.MessageIDs.LAST_ACQ_FILE_RSP == msg):
+            self.__download(payload, ".//")
+        else:
+            self.logger.error("Problem with getting last acquisition raw file.")
+            raise Exception("Problem with getting last acquisition raw file.")
         
     async def setup_instrument_connection(self, inst_num):
         # Start listening from messages from the client
@@ -423,6 +439,25 @@ class InstrumentClient:
             self.resp = None
         self.logger.info(f'Response: {received_resp.name}')
         return received_resp, resp_payload
+            
+    def __download(self, url: str, dest_folder: str):
+        if not os.path.exists(dest_folder):
+            os.makedirs(dest_folder)  # create folder if it does not exist
+
+        filename = url.split('/')[-1].replace(" ", "_")  # be careful with file names
+        file_path = os.path.join(dest_folder, filename)
+
+        r = requests.get(url, stream=True)
+        if r.ok:
+            self.logger.info(f"Saving to {os.path.abspath(file_path)}")
+            with open(file_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 8):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
+        else:  # HTTP status code 4XX/5XX
+            self.logger.info(f"Download failed: status code {r.status_code}\n{r.text}")
         
     
    

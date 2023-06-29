@@ -68,6 +68,8 @@ class MSReactProtocol(BaseProtocol):
         SET_REPEATING_SCAN_CMD      = 111
         CLEAR_REPEATING_SCAN_CMD    = 112
         UPDATE_DEF_SCAN_PARAMS_CMD  = 113
+        GET_LAST_ACQ_FILE_CMD       = 114
+        LAST_ACQ_FILE_RSP           = 115
 
         # Mock message group 
         SET_MS_SCAN_LVL_CMD         = 200
