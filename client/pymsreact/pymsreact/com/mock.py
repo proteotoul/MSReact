@@ -27,7 +27,7 @@ class MockClient(InstrumentClient):
     DEFAULT_SCAN_INTERVAL = 1
     # TODO - The path to the executable should be updated once the pulling of 
     #        latest server executable is implemented.
-    MOCK_SERVER_PATH = '\\data\\mock\\net48\\MSReactServer.exe'
+    MOCK_SERVER_PATH = '\\tools\\mock\\net48\\MSReactServer.exe'
 
     def __init__(self, 
                  protocol,
