@@ -406,3 +406,9 @@ client/pymsreact/data/mock
 client/pymsreact/output
 client/pymsreact/pymsreact/utils/output
 client/pymsreact/pymsreact/utils/adv_prm_utils/output
+
+# Temp folder
+client/pymsreact/temp
+
+# Tools folder TODO: Will need to be re-added in some form
+client/pymsreact/tools
