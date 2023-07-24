@@ -154,6 +154,9 @@ class MSReactClient:
     def instrument_client_cb(self, msg_id, args = None):
         if (instrument.InstrMsgIDs.SCAN == msg_id):
             self.algo_manager.deliver_scan(args)
+        elif (instrument.InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD == msg_id):
+            self.logger.info('Received acquisition file download finished message.')
+            self.algo_manager.acquisition_file_download_finished(args)
         elif (instrument.InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
             self.logger.info('Received finished acquisition message.')
             self.algo_manager.acquisition_ended()
@@ -193,7 +196,7 @@ class MSReactClient:
         elif (AcqMsgIDs.REQUEST_RAW_FILE_NAME == msg_id):
             await self.inst_client.request_raw_file_name()
         elif (AcqMsgIDs.REQUEST_LAST_RAW_FILE == msg_id):
-            await self.inst_client.request_last_acquisition_file()
+            await self.inst_client.request_last_acquisition_file(args)
         
     async def run_on_instrument(self, loop, args):
     

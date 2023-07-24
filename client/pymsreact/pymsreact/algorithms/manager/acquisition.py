@@ -37,6 +37,7 @@ class AcqMsgIDs(Enum):
     DISABLE_PLOT = 13
     REQUEST_RAW_FILE_NAME = 14
     REQUEST_LAST_RAW_FILE = 15
+    RAW_FILE_DOWNLOAD_FINISHED = 16
     
 class AcqStatIDs(Enum):
     """
@@ -93,6 +94,8 @@ class Acquisition:
        algorithm runner
     
     """
+    
+    TRANSFER_REGISTER_NAME = '.\\transfer_register.json'
 
 
     def __init__(self, queue_in, queue_out):
@@ -113,10 +116,16 @@ class Acquisition:
         self.queue_out = queue_out
         self.scan_queue = queue.Queue()
         self.status_lock = threading.Lock()
+        self.raw_file_lock = threading.Lock()
+        self.transfer_register_lock = threading.Lock()
         
         self.instrument = MassSpectrometerInstrument()
         self.settings = acqs.AcquisitionSettings()
         self.status = AcqStatIDs.ACQUISITION_IDLE
+        self.last_raw_file = ''
+        
+        self.transfer_register = {}
+        self.transfer_register_file = ''
         
         # Since the acquisition objects are instantiated in separate processes,
         # logging needs to be initialized. The log messages from the acquisition
@@ -125,14 +134,19 @@ class Acquisition:
         queue_handler = logging.handlers.QueueHandler(queue_out)
         root = logging.getLogger()
         # Remove the default stream handler to avoid duplicate printing
+        no_que_handler_exists = True
         for handler in root.handlers:
             if isinstance(handler, logging.StreamHandler):
                 root.removeHandler(handler)
-        root.addHandler(queue_handler)
-        root.setLevel(logging.DEBUG)
+            if isinstance(handler, logging.handlers.QueueHandler):
+                no_que_handler_exists = False
+        if no_que_handler_exists:
+            root.addHandler(queue_handler)
+            root.setLevel(logging.DEBUG)
+            
         self.logger = logging.getLogger(__name__)
         
-    def configure(self, fconf):
+    def configure(self, fconf, transfer_register):
         if fconf is not None:
             configtree = ConfigFactory.parse_file(fconf)
             self.config = \
@@ -140,8 +154,14 @@ class Acquisition:
         else:
             self.config = None
             
+        self.transfer_register_file = transfer_register
+        with open(transfer_register, 'r') as f:
+            self.transfer_register = json.load(f)
+            
         self.logger.info('Acquisition was configured with the following ' +
                          f'configuration: {pprint(self.config)}')
+        self.logger.info('The transfer register contains the following ' +
+                         f'information: {pprint(self.transfer_register)}')
     
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
@@ -228,8 +248,8 @@ class Acquisition:
     def get_raw_file_name(self):
         self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
         
-    def get_last_raw_file(self):
-        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, None))
+    def get_last_raw_file(self, target_dir):
+        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, target_dir))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
@@ -258,6 +278,34 @@ class Acquisition:
         # TODO - check if the new_status is valid element of the Enum
         with self.status_lock:
             self.acquisition_status = new_status
+            
+    def is_rawfile_downloaded(self):
+        download_finished = False
+        with self.raw_file_lock:
+            raw_file_path = self.last_raw_file
+            if self.last_raw_file != '':
+                download_finished = True
+
+        return download_finished
+        
+    def get_downloaded_raw_file_path(self):
+        with self.raw_file_lock:
+            raw_file_path = self.last_raw_file
+            self.last_raw_file = ''
+        return raw_file_path
+        
+    def update_raw_file_download_status(self, raw_file_path):
+        with self.raw_file_lock:
+            self.last_raw_file = raw_file_path
+            
+    def update_transfer_register(self, data):
+        with self.transfer_register_lock:
+            self.transfer_register.update(data)
+            
+    def save_transfer_register(self):
+        with self.transfer_register_lock:
+            with open(self.transfer_register_file, "w") as outfile:
+                json.dump(self.transfer_register, outfile)
         
     def wait_for_end_or_error(self):
         """Wait until the acquisition ends or until an error occurs"""
@@ -269,6 +317,8 @@ class Acquisition:
                 continue
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
+            elif AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED == cmd:
+                self.update_raw_file_download_status(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
                 break
@@ -300,7 +350,8 @@ def acquisition_process(module_name,
                         acquisition_name,
                         queue_in,
                         queue_out,
-                        fconf):
+                        fconf,
+                        transfer_register):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
 
@@ -322,7 +373,7 @@ def acquisition_process(module_name,
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
-    acquisition.configure(fconf)
+    acquisition.configure(fconf, transfer_register)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()
@@ -353,3 +404,4 @@ def acquisition_process(module_name,
     #       the acquisition and decide what kind of activities to carry out in each case.
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_POST_ACQUISITION)
     acquisition.post_acquisition()
+    acquisition.save_transfer_register()

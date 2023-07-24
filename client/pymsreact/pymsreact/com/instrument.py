@@ -5,14 +5,16 @@ import multiprocessing
 import time
 import os
 import requests
+from tqdm import *
 from enum import Enum
 from multiprocessing import Queue
 from queue import Empty, Full
 
 class InstrMsgIDs(Enum):
     SCAN = 1
-    FINISHED_ACQUISITION = 2
-    ERROR = 3
+    FINISHED_ACQ_FILE_DOWNLOAD = 2
+    FINISHED_ACQUISITION = 3
+    ERROR = 4
 
 class InstrumentClient:
     '''
@@ -370,14 +372,15 @@ class InstrumentClient:
             raw_file_id = payload
         return raw_file_id
         
-    async def request_last_acquisition_file(self):
+    async def request_last_acquisition_file(self, target_dir):
         """Requests the raw file of the last acquisition"""
         self.logger.info('Request latest acquisition raw file from server.')
         await self.proto.send_message(self.proto.MessageIDs.GET_LAST_ACQ_FILE_CMD)
         time.sleep(1)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.LAST_ACQ_FILE_RSP == msg):
-            self.__download(payload, ".//")
+            file_path = self.__download(payload, target_dir)
+            self.app_cb(InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD, file_path)
         else:
             self.logger.error("Problem with getting last acquisition raw file.")
             raise Exception("Problem with getting last acquisition raw file.")
@@ -451,13 +454,17 @@ class InstrumentClient:
         if r.ok:
             self.logger.info(f"Saving to {os.path.abspath(file_path)}")
             with open(file_path, 'wb') as f:
+                pbar = tqdm(total=int(r.headers['Content-Length']))
                 for chunk in r.iter_content(chunk_size=1024 * 8):
                     if chunk:
                         f.write(chunk)
                         f.flush()
                         os.fsync(f.fileno())
+                        pbar.update(len(chunk))
         else:  # HTTP status code 4XX/5XX
             self.logger.info(f"Download failed: status code {r.status_code}\n{r.text}")
+            
+        return file_path if r.ok else ''
         
     
    

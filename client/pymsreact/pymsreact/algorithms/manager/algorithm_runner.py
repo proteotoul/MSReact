@@ -11,6 +11,7 @@ import os
 import pkgutil
 from .algorithm import Algorithm
 from pathlib import Path
+import json
         
 class AlgorithmManager:
     """
@@ -31,6 +32,9 @@ class AlgorithmManager:
     
     ALGO_LISTS = { 'releases' : RELEASES,
                    'prototypes' : PROTO_ALGORITHMS }
+                   
+    TRANSFER_REGISTER = '\\transfer_register.json'
+    TRANSFER_REGISTER_DEFAULTS = {"KEY" : "value"}
     
     
     def __init__(self, app_cb):
@@ -161,6 +165,9 @@ class AlgorithmManager:
         finished with the acquisition."""
         self.acq_in_q.put((AcqMsgIDs.ACQUISITION_ENDED, None))
         
+    def acquisition_file_download_finished(self, file_path):
+        self.acq_in_q.put((AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED, file_path))
+        
     def deliver_scan(self, scan):
         """Method to forward scans received from the instrument to the algorithm.
         
@@ -214,18 +221,31 @@ class AlgorithmManager:
             The asyncio loop to execute the acquisition tasks on.
         
         """
-        i = 0
-        for acquisition in self.algorithm.acquisition_sequence:
-            self.logger.info(f'Running acquisition sequence: {i}')
-            self.current_acq = acquisition
-            await loop.run_in_executor(self.executor,
-                                       acquisition_process, 
-                                       acquisition.__module__,
-                                       acquisition.__name__,
-                                       self.acq_in_q,
-                                       self.acq_out_q,
-                                       self.fconf)
-        self.logger.info(f'Algorithm execution ended.')
+        try:
+            # Create transfer register
+            transfer_register = os.getcwd() + self.TRANSFER_REGISTER
+            #if not os.path.isfile(transfer_register):
+            with open(transfer_register, 'w') as f:
+                json.dump(self.TRANSFER_REGISTER_DEFAULTS, f)
+            
+            i = 0
+            for acquisition in self.algorithm.acquisition_sequence:
+                self.logger.info(f'Running acquisition sequence: {i}')
+                self.current_acq = acquisition
+                await loop.run_in_executor(self.executor,
+                                           acquisition_process, 
+                                           acquisition.__module__,
+                                           acquisition.__name__,
+                                           self.acq_in_q,
+                                           self.acq_out_q,
+                                           self.fconf,
+                                           transfer_register)
+            self.logger.info(f'Algorithm execution ended.')
+        finally:
+            # Remove transfer register
+            if os.path.isfile(transfer_register):
+                os.remove(transfer_register)
+        
                                        
     async def __process_acquisition_requests(self):
         """Private method, listens to requests from the acquisitions and 
