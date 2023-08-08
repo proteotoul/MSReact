@@ -12,9 +12,10 @@ from queue import Empty, Full
 
 class InstrMsgIDs(Enum):
     SCAN = 1
-    FINISHED_ACQ_FILE_DOWNLOAD = 2
-    FINISHED_ACQUISITION = 3
-    ERROR = 4
+    RECEIVED_RAW_FILE_NAMES = 2
+    FINISHED_ACQ_FILE_DOWNLOAD = 3
+    FINISHED_ACQUISITION = 4
+    ERROR = 5
 
 class InstrumentClient:
     '''
@@ -361,21 +362,21 @@ class InstrumentClient:
             
     async def request_raw_file_name(self):
         """Requests the name of the current acquisitions raw file"""
-        self.logger.info('Requesting raw file name from the instrument.')
-        raw_file_id = ""
+        self.logger.info('Requesting recent raw file names from the instrument.')
         await self.proto.send_message(self.proto.MessageIDs.GET_ACQ_RAW_FILE_NAME)
-            
-        if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP != msg):
+        msg, payload = await self.__wait_for_response()
+        if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP == msg):
+            self.app_cb(InstrMsgIDs.RECEIVED_RAW_FILE_NAMES, payload)
+        else:
             self.logger.error("Problem with getting raw file name!")
             raise Exception("Problem with getting raw file name!")
-        else:
-            raw_file_id = payload
-        return raw_file_id
         
-    async def request_last_acquisition_file(self, target_dir):
+    async def request_last_acquisition_file(self, args):
         """Requests the raw file of the last acquisition"""
         self.logger.info('Request latest acquisition raw file from server.')
-        await self.proto.send_message(self.proto.MessageIDs.GET_LAST_ACQ_FILE_CMD)
+        raw_file = args[0]
+        target_dir = args[1]
+        await self.proto.send_message(self.proto.MessageIDs.GET_LAST_ACQ_FILE_CMD, raw_file)
         time.sleep(1)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.LAST_ACQ_FILE_RSP == msg):

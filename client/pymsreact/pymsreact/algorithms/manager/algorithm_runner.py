@@ -167,6 +167,9 @@ class AlgorithmManager:
         
     def acquisition_file_download_finished(self, file_path):
         self.acq_in_q.put((AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED, file_path))
+
+    def received_recent_raw_file_names(self, raw_file_names):
+        self.acq_in_q.put((AcqMsgIDs.RECEIVED_RAW_FILE_NAMES, raw_file_names))
         
     def deliver_scan(self, scan):
         """Method to forward scans received from the instrument to the algorithm.

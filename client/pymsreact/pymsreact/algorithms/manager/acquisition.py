@@ -38,6 +38,7 @@ class AcqMsgIDs(Enum):
     REQUEST_RAW_FILE_NAME = 14
     REQUEST_LAST_RAW_FILE = 15
     RAW_FILE_DOWNLOAD_FINISHED = 16
+    RECEIVED_RAW_FILE_NAMES = 17
     
 class AcqStatIDs(Enum):
     """
@@ -116,12 +117,14 @@ class Acquisition:
         self.queue_out = queue_out
         self.scan_queue = queue.Queue()
         self.status_lock = threading.Lock()
+        self.raw_file_names_lock = threading.Lock()
         self.raw_file_lock = threading.Lock()
         self.transfer_register_lock = threading.Lock()
         
         self.instrument = MassSpectrometerInstrument()
         self.settings = acqs.AcquisitionSettings()
         self.status = AcqStatIDs.ACQUISITION_IDLE
+        self.recent_raw_file_names = []
         self.last_raw_file = ''
         
         self.transfer_register = {}
@@ -245,11 +248,11 @@ class Acquisition:
         """
         self.queue_out.put((AcqMsgIDs.SET_TX_SCAN_LEVEL, self.scan_tx_interval))
         
-    def get_raw_file_name(self):
+    def get_recent_raw_file_names(self):
         self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
         
-    def get_last_raw_file(self, target_dir):
-        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, target_dir))
+    def get_last_raw_file(self, raw_file, target_dir):
+        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, (raw_file, target_dir)))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
@@ -278,6 +281,23 @@ class Acquisition:
         # TODO - check if the new_status is valid element of the Enum
         with self.status_lock:
             self.acquisition_status = new_status
+
+    def update_recent_raw_file_names(self, raw_file_names):
+        with self.raw_file_names_lock:
+            self.recent_raw_file_names = raw_file_names
+    
+    def received_recent_rawfile_names(self):
+        raw_file_names_returned = False
+        with self.raw_file_names_lock:
+            if self.recent_raw_file_names != []:
+                raw_file_names_returned = True
+        return raw_file_names_returned
+        
+    def fetch_recent_raw_file_names(self):
+        with self.raw_file_names_lock:
+            recent_raw_file_names = self.recent_raw_file_names
+            self.recent_raw_file_names = []
+        return recent_raw_file_names
             
     def is_rawfile_downloaded(self):
         download_finished = False
@@ -317,6 +337,8 @@ class Acquisition:
                 continue
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
+            elif AcqMsgIDs.RECEIVED_RAW_FILE_NAMES == cmd:
+                self.update_recent_raw_file_names(payload)
             elif AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED == cmd:
                 self.update_raw_file_download_status(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:

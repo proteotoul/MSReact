@@ -154,6 +154,9 @@ class MSReactClient:
     def instrument_client_cb(self, msg_id, args = None):
         if (instrument.InstrMsgIDs.SCAN == msg_id):
             self.algo_manager.deliver_scan(args)
+        elif (instrument.InstrMsgIDs.RECEIVED_RAW_FILE_NAMES == msg_id):
+            self.logger.info(f'Received recent raw file names:{args}')
+            self.algo_manager.received_recent_raw_file_names(args)
         elif (instrument.InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD == msg_id):
             self.logger.info('Received acquisition file download finished message.')
             self.algo_manager.acquisition_file_download_finished(args)
