@@ -125,7 +125,11 @@ class AlgorithmManager:
                                                       + '.hocon')
                             self.ALGO_LISTS[info.name].append((value, fconf))
     
-    def select_algorithm(self, algorithm, fconf, instrument_info):
+    def select_algorithm(self, 
+                         algorithm, 
+                         fconf, 
+                         instrument_info, 
+                         exp_seq_file=None):
         """Method to select the algorithm to run.
         
         Parameters
@@ -142,6 +146,11 @@ class AlgorithmManager:
         if selected_algorithm is not None:
             
             self.algorithm = selected_algorithm()
+
+            # If an exported sequence file was provided, try to set the 
+            # sequence of acquisition tasks based on the exported sequence file.
+            if exp_seq_file is not None:
+                success = self.algorithm.set_acquisition_sequence(exp_seq_file)
             
             for acquisition in selected_algorithm.ACQUISITION_SEQUENCE:
                 if instrument_info != acquisition.instrument.instrument_name:
@@ -233,16 +242,18 @@ class AlgorithmManager:
             
             i = 0
             for acquisition in self.algorithm.acquisition_sequence:
-                self.logger.info(f'Running acquisition sequence: {i}')
+                self.logger.info(f'Running acquisition {i + 1} from sequence')
                 self.current_acq = acquisition
                 await loop.run_in_executor(self.executor,
                                            acquisition_process, 
                                            acquisition.__module__,
                                            acquisition.__name__,
+                                           self.algorithm.raw_file_names[i],
                                            self.acq_in_q,
                                            self.acq_out_q,
                                            self.fconf,
                                            transfer_register)
+                i = i + 1
             self.logger.info(f'Algorithm execution ended.')
         finally:
             # Remove transfer register

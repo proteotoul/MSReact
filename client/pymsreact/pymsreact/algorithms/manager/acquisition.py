@@ -113,6 +113,7 @@ class Acquisition:
         self.name = DEFAULT_NAME
         self.scan_tx_interval = DEFAULT_SCAN_TX_INTERVAL
         
+        self.raw_file_name = ''
         self.queue_in = queue_in
         self.queue_out = queue_out
         self.scan_queue = queue.Queue()
@@ -149,7 +150,9 @@ class Acquisition:
             
         self.logger = logging.getLogger(__name__)
         
-    def configure(self, fconf, transfer_register):
+    def configure(self, raw_file_name, fconf, transfer_register):
+        self.raw_file_name = raw_file_name
+
         if fconf is not None:
             configtree = ConfigFactory.parse_file(fconf)
             self.config = \
@@ -370,6 +373,7 @@ class Acquisition:
         
 def acquisition_process(module_name,
                         acquisition_name,
+                        raw_file_name,
                         queue_in,
                         queue_out,
                         fconf,
@@ -395,7 +399,7 @@ def acquisition_process(module_name,
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
-    acquisition.configure(fconf, transfer_register)
+    acquisition.configure(raw_file_name, fconf, transfer_register)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()

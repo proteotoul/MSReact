@@ -81,6 +81,12 @@ class MSReactClient:
                                 dest = 'config',
                                 help='configuration json file to pass into the \
                                       algorithm')
+        
+        parser_run.add_argument('-s',
+                                metavar = 'sequence',
+                                dest = 'sequence',
+                                help='sequence file exported in csv format to \
+                                      enable dynamic acquisition sequence execution')
 
         # Parser for sub-command "proto"
         proto_choices = \
@@ -96,6 +102,12 @@ class MSReactClient:
                                   dest = 'config',
                                   help='configuration json file to pass into \
                                   the algorithm')
+        
+        parser_proto.add_argument('-s',
+                                metavar = 'sequence',
+                                dest = 'sequence',
+                                help='sequence file exported in csv format to \
+                                      enable dynamic acquisition sequence execution')
                                   
         parser_proto.add_argument('alg', choices = proto_choices,
                                  metavar = 'algorithm', default = 'monitor',
@@ -228,10 +240,13 @@ class MSReactClient:
             # selection was successful run the algorithm.
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
+            if self.algo_manager.select_algorithm(args.alg, 
+                                                  args.config,
+                                                  "Tribrid",
+                                                  args.sequence):
                 await self.algo_manager.run_algorithm()
             else:
-                self.logger.error(f"Failed loading {args.alg}")
+                self.logger.error(f"Failed loading {args.alg} workflow.")
             
             if self.state != ClientStates.ERROR:
                 await self.inst_client.instrument_clean_up()
@@ -265,10 +280,13 @@ class MSReactClient:
 
             # TODO: Instrument info should be collected and provided to the 
             #       function later.
-            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
+            if self.algo_manager.select_algorithm(args.alg,
+                                                  args.config,
+                                                  "Tribrid",
+                                                  args.sequence):
                 await self.algo_manager.run_algorithm()
             else:
-                self.logger.error(f"Failed loading {args.alg}")
+                self.logger.error(f"Failed loading {args.alg} workflow.")
                 self.inst_client.terminate_mock_server()
                 
             self.logger.info("Unsubscribe from scans.")
@@ -309,7 +327,7 @@ class MSReactClient:
                 if self.algo_manager.select_algorithm(args.suite, args.config, "Tribrid"):
                     await self.algo_manager.run_algorithm()
                 else:
-                    self.logger.error(f"Failed loading {args.suite}")
+                    self.logger.error(f"Failed loading {args.suite} workflow.")
                     
                 self.logger.info("Unsubscribe from scans.")
                 await self.inst_client.unsubscribe_from_scans()
