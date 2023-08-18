@@ -1,5 +1,6 @@
 from algorithms.manager.algorithm import Algorithm
 from algorithms.manager.acquisition import Acquisition, AcqStatIDs, ScanFields, CentroidFields
+import algorithms.manager.ms_instruments.mock_instrument as mi
 import algorithms.manager.ms_instruments.tribrid_instrument as ti
 import algorithms.manager.acquisition_workflow as aw
 import json
@@ -32,10 +33,11 @@ NUMBER_OF_PEAKS = 15 # Number of precursors to select for MS2
 EXCLUSION_TIME = 0.05 # Exclusion time in minutes TODO: Only for Mock
 
 class TopNAcquisition(Acquisition):
+    instruments = [mi.MockInstrument, ti.ThermoTribridInstrument]
+    
     def __init__(self, *args):
         super().__init__(*args)
         self.name = 'Test_TopN_acquisition'
-        self.instrument = ti.ThermoTribridInstrument()
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')

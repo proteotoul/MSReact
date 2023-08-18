@@ -64,7 +64,7 @@ class MockClient(InstrumentClient):
             mock server.
         """
         curent_dir = os.getcwd()
-        self.raw_file_list = ([curent_dir + DEFAULT_RAW_FILE_LIST] 
+        self.raw_file_list = ([curent_dir + self.DEFAULT_RAW_FILE_LIST] 
                               if raw_file_list is None else raw_file_list)
         self.scan_interval = scan_interval
         

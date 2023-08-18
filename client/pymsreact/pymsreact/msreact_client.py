@@ -236,13 +236,14 @@ class MSReactClient:
             # and get possible parameters.
             await self.inst_client.setup_instrument_connection(1)
 
+            # Get the type of the instrument
+            intr_type = await self.inst_client.get_instrument_type()
+
             # Try to select the requested algorithm, and if the algorithm 
             # selection was successful run the algorithm.
-            # TODO: Instrument info should be collected and provided to the 
-            #       function later.
-            if self.algo_manager.select_algorithm(args.alg, 
+            if self.algo_manager.select_algorithm(args.alg,
                                                   args.config,
-                                                  "Tribrid",
+                                                  intr_type,
                                                   args.sequence):
                 await self.algo_manager.run_algorithm()
             else:
@@ -278,11 +279,12 @@ class MSReactClient:
             # and get possible parameters.
             await self.inst_client.setup_instrument_connection(1)
 
-            # TODO: Instrument info should be collected and provided to the 
-            #       function later.
+            # Get the type of the instrument
+            intr_type = await self.inst_client.get_instrument_type()
+
             if self.algo_manager.select_algorithm(args.alg,
                                                   args.config,
-                                                  "Tribrid",
+                                                  intr_type,
                                                   args.sequence):
                 await self.algo_manager.run_algorithm()
             else:
@@ -322,9 +324,10 @@ class MSReactClient:
                 
                 await self.inst_client.setup_instrument_connection(1)
 
-                # TODO: Instrument info should be collected and provided to the 
-                #       function later.
-                if self.algo_manager.select_algorithm(args.suite, args.config, "Tribrid"):
+                # Get the type of the instrument
+                intr_type = await self.inst_client.get_instrument_type()
+
+                if self.algo_manager.select_algorithm(args.suite, args.config, intr_type):
                     await self.algo_manager.run_algorithm()
                 else:
                     self.logger.error(f"Failed loading {args.suite} workflow.")

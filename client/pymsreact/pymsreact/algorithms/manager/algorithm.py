@@ -56,17 +56,19 @@ class Algorithm:
                 acq_sample_ids = []
                 acq_task_seq = []
                 row_count = 0
+
+                success = True
                 for row in sequence:
                     row_count = row_count + 1
                     try:
                         acquisition = row[self.COMMENT_COLUMN]
+                        row_found = False
                         for acq_class in self.acquisition_sequence:
                             if acquisition == acq_class.__name__:
                                 acq_task_seq.append(acq_class)
-                                success = True
+                                row_found = True
                                 break
-                        if row_count != len(acq_task_seq):
-                            success = False
+                        if not row_found:
                             error_print = ("Could not resolve the following sequence input from user:"
                                            + "\n\t{0:>{length}}    {1:>{length}}    {2:>{length}}".format(self.FILE_NAME_COLUMN, 
                                                                                                           self.SAMPLE_ID_COLUMN, 
@@ -78,6 +80,8 @@ class Algorithm:
                         else:
                             acq_raw_files.append(row[self.FILE_NAME_COLUMN])
                             acq_sample_ids.append(row[self.SAMPLE_ID_COLUMN])
+
+                        success = success & row_found
                         # Alternative solution for lookup
                         #acq_class = getattr(sys.modules[self.__module__], acquisition)
                         #acquisition_seq.append(acq_class)
@@ -104,6 +108,8 @@ class Algorithm:
 
                         seq_info_print = seq_info_print + '\n' + line
                     self.logger.info(seq_info_print)
+        else:
+            self.logger.error(f'The following exported sequence file could not be located: {exported_seq_file}')
         
         return success
                     

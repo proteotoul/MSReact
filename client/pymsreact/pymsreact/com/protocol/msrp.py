@@ -46,8 +46,8 @@ class MSReactProtocol(BaseProtocol):
         # Instrument message group
         GET_AVAILABLE_INSTR_CMD     = 20
         AVAILABLE_INSTR_RSP         = 21
-        GET_INSTR_INFO_CMD          = 22
-        INSTR_INFO_RSP              = 23
+        GET_INSTR_TYPE_CMD          = 22
+        INSTR_TYPE_RSP              = 23
         GET_INSTR_STATE_CMD         = 24
         INSTR_STATE_RSP             = 25
         SELECT_INSTR_CMD            = 26

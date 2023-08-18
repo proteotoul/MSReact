@@ -128,7 +128,7 @@ class AlgorithmManager:
     def select_algorithm(self, 
                          algorithm, 
                          fconf, 
-                         instrument_info, 
+                         instrument_type, 
                          exp_seq_file=None):
         """Method to select the algorithm to run.
         
@@ -136,8 +136,8 @@ class AlgorithmManager:
         ----------
         algorithm : str
             Name of the algorithm that is selected to be run.
-        instrument_info : str
-            Name of the available instrument.
+        instrument_type : str
+            Type of the available instrument.
         """
         self.logger.info(f'Selecting algorithm {algorithm}')
         success = True
@@ -152,11 +152,15 @@ class AlgorithmManager:
             if exp_seq_file is not None:
                 success = self.algorithm.set_acquisition_sequence(exp_seq_file)
             
-            for acquisition in selected_algorithm.ACQUISITION_SEQUENCE:
-                if instrument_info != acquisition.instrument.instrument_name:
+            for acquisition in self.algorithm.acquisition_sequence:
+                instrument_types = [x.instrument_name for x in acquisition.instruments]
+                if instrument_type not in instrument_types:
                     success = False
-                    self.logger.error(f'Available instrument {instrument_info}' +
-                                      f' not compatible with {selected_algorithm}.')
+                    self.logger.error(f'Available instrument {instrument_type}' +
+                                      f' not compatible with {acquisition.__name__}. ' +
+                                      f'The acquisition {acquisition.__name__} is ' +
+                                      'only compatible with these instruments: ' +
+                                      f'{instrument_types}')
                     break
                     
             if self.__validate_fconf(fconf) is not None:
@@ -240,6 +244,8 @@ class AlgorithmManager:
             with open(transfer_register, 'w') as f:
                 json.dump(self.TRANSFER_REGISTER_DEFAULTS, f)
             
+            # TODO - If there is a problem on the server side will the
+            #        chain of acquisitions just be executed anyway?
             i = 0
             for acquisition in self.algorithm.acquisition_sequence:
                 self.logger.info(f'Running acquisition {i + 1} from sequence')

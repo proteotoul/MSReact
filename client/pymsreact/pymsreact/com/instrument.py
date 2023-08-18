@@ -149,8 +149,8 @@ class InstrumentClient:
             pass
         return payload
         
-    async def get_instrument_info(self, instrument):
-        """Retreives information about a selected instrument.
+    async def get_instrument_type(self):
+        """Retreives the type of the instrument.
 
         Parameters
         ----------
@@ -163,13 +163,12 @@ class InstrumentClient:
             Information about the selected instrument.
         """
     
-        self.logger.info(f'Requesting info about instrument {instrument}')
+        self.logger.info(f'Requesting type of the instrument.')
         
-        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_INFO_CMD,
-                                      instrument)
+        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_TYPE_CMD)
         msg, payload = await self.__wait_for_response()
-        if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
-            self.logger.info(f'Instrument info:\n{payload}')
+        if (self.proto.MessageIDs.INSTR_TYPE_RSP == msg):
+            self.logger.info(f'Instrument type: {payload}')
         else:
             pass
         return payload
@@ -392,7 +391,9 @@ class InstrumentClient:
         self.listening_task = \
             loop.create_task(self.listen_for_messages())
             
-        # Select instrument TODO - This should be instrument discovery
+        # Select instrument TODO - This should be instrument discovery, or simply
+        # assume that there is a separate computer for each mass spectrometer 
+        # instrument.
         await self.select_instrument(inst_num)
         
         # Collect possible parameters for requesting custom scans

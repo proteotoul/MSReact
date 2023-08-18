@@ -1,14 +1,16 @@
 from algorithms.manager.algorithm import Algorithm
 from algorithms.manager.acquisition import Acquisition, AcqStatIDs
+import algorithms.manager.ms_instruments.mock_instrument as mi
 import algorithms.manager.ms_instruments.tribrid_instrument as ti
 import logging
 import time
 
 class MonitorAcquisition(Acquisition):
+    instruments = [mi.MockInstrument, ti.ThermoTribridInstrument]
+    
     def __init__(self, *args):
         super().__init__(*args)
         self.name = 'Monitor_algo_first_acquisition'
-        self.instrument = ti.ThermoTribridInstrument()
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
