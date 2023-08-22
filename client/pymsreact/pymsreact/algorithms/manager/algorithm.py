@@ -11,6 +11,8 @@ class Algorithm:
     ACQUISITION_METHOD = {}
     '''Sequence - List of Acquisitions'''
     ACQUISITION_SEQUENCE = []
+    '''Configurations - List of Configurations for each acquisition'''
+    CONFIGURATIONS = []
     '''Cycle interval - TODO: This is only for mock.'''
     CYCLE_INTERVAL = 10
     '''Name of the algorithm. This is a mandatory field for the algorithms'''
@@ -36,6 +38,7 @@ class Algorithm:
         self.acquisition_method = self.ACQUISITION_METHOD
         self.acquisition_sequence = self.ACQUISITION_SEQUENCE
         self.raw_file_names = [''] * len(self.ACQUISITION_SEQUENCE)
+        self.configs = self.CONFIGURATIONS
         self.current_acquisition = None
         self.logger = logging.getLogger(__name__)
 
@@ -55,17 +58,19 @@ class Algorithm:
                 acq_raw_files = []
                 acq_sample_ids = []
                 acq_task_seq = []
+                acq_configs = []
                 row_count = 0
 
                 success = True
                 for row in sequence:
                     row_count = row_count + 1
                     try:
-                        acquisition = row[self.COMMENT_COLUMN]
+                        acquisition, conf = self._interpret_sequence_cell(row[self.COMMENT_COLUMN])
                         row_found = False
                         for acq_class in self.acquisition_sequence:
                             if acquisition == acq_class.__name__:
                                 acq_task_seq.append(acq_class)
+                                acq_configs.append(conf)
                                 row_found = True
                                 break
                         if not row_found:
@@ -96,6 +101,7 @@ class Algorithm:
                 if success:
                     self.acquisition_sequence = acq_task_seq
                     self.raw_file_names = acq_raw_files
+                    self.configs = acq_configs
                     seq_info_print = "Dynamic acquisition sequence set by user:\n"
                     seq_info_print = (seq_info_print 
                                       + "\t{0:>{length}}    {1:>{length}}    {2:>{length}}".format(self.FILE_NAME_COLUMN, 
@@ -113,4 +119,10 @@ class Algorithm:
         
         return success
                     
-                
+    def _interpret_sequence_cell(self, cell):
+        separator = ';'
+        if separator in cell:
+            retval = tuple(cell.split(separator, 1))
+        else:
+            retval = (cell, None)
+        return retval

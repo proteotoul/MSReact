@@ -98,7 +98,6 @@ class Acquisition:
     """
     
     TRANSFER_REGISTER_NAME = '.\\transfer_register.json'
-
     instruments = [MassSpectrometerInstrument]
 
     def __init__(self, queue_in, queue_out):
@@ -153,15 +152,16 @@ class Acquisition:
             
         self.logger = logging.getLogger(__name__)
         
-    def configure(self, raw_file_name, fconf, transfer_register):
+    def configure(self, raw_file_name, configs, transfer_register):
         self.raw_file_name = raw_file_name
-
-        if fconf is not None:
-            configtree = ConfigFactory.parse_file(fconf)
-            self.config = \
-                json.loads(json.dumps(configtree.as_plain_ordered_dict()))
-        else:
-            self.config = None
+        
+        # Load configurations. The workflow configurations are overwritten by 
+        # acquisition task specific configurations.
+        self.config = {}
+        for config in configs:
+            if config is not None:
+                configtree = ConfigFactory.parse_file(config)
+                self.config.update(json.loads(json.dumps(configtree.as_plain_ordered_dict())))
             
         self.transfer_register_file = transfer_register
         with open(transfer_register, 'r') as f:
@@ -423,7 +423,7 @@ def acquisition_process(module_name,
                         raw_file_name,
                         queue_in,
                         queue_out,
-                        fconf,
+                        configs,
                         transfer_register):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
@@ -446,7 +446,7 @@ def acquisition_process(module_name,
         module = importlib.import_module(module_name)
         class_ = getattr(module, acquisition_name)
         acquisition = class_(queue_in, queue_out)
-        acquisition.configure(raw_file_name, fconf, transfer_register)
+        acquisition.configure(raw_file_name, configs, transfer_register)
 
         # Start listening for messages
         msg_listener_thread = \
@@ -507,7 +507,7 @@ def acquisition_process_old(module_name,
                         raw_file_name,
                         queue_in,
                         queue_out,
-                        fconf,
+                        configs,
                         transfer_register):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
@@ -530,7 +530,7 @@ def acquisition_process_old(module_name,
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
-    acquisition.configure(raw_file_name, fconf, transfer_register)
+    acquisition.configure(raw_file_name, configs, transfer_register)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()

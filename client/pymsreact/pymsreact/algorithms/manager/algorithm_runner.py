@@ -257,7 +257,7 @@ class AlgorithmManager:
                                            self.algorithm.raw_file_names[i],
                                            self.acq_in_q,
                                            self.acq_out_q,
-                                           self.fconf,
+                                           [self.fconf, self.algorithm.configs[i]],
                                            transfer_register)
                 i = i + 1
             self.logger.info(f'Algorithm execution ended.')
