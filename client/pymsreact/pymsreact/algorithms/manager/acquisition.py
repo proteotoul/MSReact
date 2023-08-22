@@ -497,7 +497,9 @@ def acquisition_process(module_name,
                                     args=(acquisition.post_acquisition,),
                                     daemon=True)
                 acquisition.exec_acq_thread(post_acq_thread)
+                # Stop the message listening thread
                 acquisition.stop_listening.set()
+                msg_listener_thread.join()
                 acquisition.save_transfer_register()
     except Exception as e:
         traceback.print_exc()

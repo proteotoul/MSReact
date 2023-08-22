@@ -52,7 +52,8 @@ class AlgorithmManager:
         
         # Create process pool, listening event and queues for multiprocessing
         self.executor = ProcessPoolExecutor(max_workers=3)
-        self.listening = multiprocessing.Manager().Event()
+        #self.listening = multiprocessing.Manager().Event()
+        self.listening = asyncio.Event()
         self.acq_in_q = multiprocessing.Manager().Queue()
         self.acq_out_q = multiprocessing.Manager().Queue()
         
@@ -278,7 +279,7 @@ class AlgorithmManager:
                 except Empty:
                     if self.listening.is_set():
                         break
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0)
             self.logger.info(f'Process acquisition requests loop exited.')
         except Exception as e:
             self.logger.error(f'An exception occured:')

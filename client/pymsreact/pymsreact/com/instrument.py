@@ -408,13 +408,17 @@ class InstrumentClient:
         await self.disconnect_from_server()
         
     async def listen_for_messages(self):
-        """Listens for messages from the server."""
-        self.listening = True
-        self.logger.info('Listening for messages started.')
-        while self.listening:
-            msg, payload = await self.proto.receive_message()
-            self.listening = await self.__dispatch_message(msg, payload)
-        self.logger.info('Exited listening for messages loop.')
+        try:
+            """Listens for messages from the server."""
+            self.listening = True
+            self.logger.info('Listening for messages started.')
+            while self.listening:
+                msg, payload = await self.proto.receive_message()
+                self.listening = await self.__dispatch_message(msg, payload)
+        except asyncio.CancelledError as e:
+            self.logger.info('Cancellation request of listening for instrument messages received.')
+        finally:
+            self.logger.info('Exited listening for messages loop.')
     
     async def __dispatch_message(self, msg, payload):
         no_error = True
