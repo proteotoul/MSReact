@@ -54,6 +54,7 @@ class AlgorithmManager:
         self.executor = ProcessPoolExecutor(max_workers=3)
         #self.listening = multiprocessing.Manager().Event()
         self.listening = asyncio.Event()
+        self.error = asyncio.Event()
         self.acq_in_q = multiprocessing.Manager().Queue()
         self.acq_out_q = multiprocessing.Manager().Queue()
         
@@ -200,6 +201,7 @@ class AlgorithmManager:
         """Method to signal to the algorithm that the other parts of the client or
         the server encountered an error."""
         self.acq_in_q.put((AcqMsgIDs.ERROR, None))
+        self.error.set()
         
     async def run_algorithm(self):
         """Method with which the application can start running the selected 
@@ -261,6 +263,9 @@ class AlgorithmManager:
                                            [self.fconf, self.algorithm.configs[i]],
                                            transfer_register)
                 i = i + 1
+                if self.error.is_set():
+                    self.logger.info(f'Instrument error received, breaking the workflow execution loop.')
+                    break
             self.logger.info(f'Algorithm execution ended.')
         finally:
             # Remove transfer register
