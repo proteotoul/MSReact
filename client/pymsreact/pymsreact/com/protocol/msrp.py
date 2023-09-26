@@ -57,19 +57,20 @@ class MSReactProtocol(BaseProtocol):
         CONFIG_ACQ_CMD              = 100
         START_ACQ_CMD               = 101
         STOP_ACQ_CMD                = 102
-        FINISHED_ACQ_EVT            = 103
-        SUBSCRIBE_TO_SCANS_CMD      = 104
-        SCAN_EVT                    = 105
-        UNSUBSCRIBE_FROM_SCANS_CMD  = 106
-        GET_POSSIBLE_PARAMS_CMD     = 107
-        POSSIBLE_PARAMS_RSP         = 108
-        REQ_CUSTOM_SCAN_CMD         = 109
-        CANCEL_CUSTOM_SCAN_CMD      = 110
-        SET_REPEATING_SCAN_CMD      = 111
-        CLEAR_REPEATING_SCAN_CMD    = 112
-        UPDATE_DEF_SCAN_PARAMS_CMD  = 113
-        GET_LAST_ACQ_FILE_CMD       = 114
-        LAST_ACQ_FILE_RSP           = 115
+        STARTED_ACQ_EVT             = 103
+        FINISHED_ACQ_EVT            = 104
+        SUBSCRIBE_TO_SCANS_CMD      = 105
+        SCAN_EVT                    = 106
+        UNSUBSCRIBE_FROM_SCANS_CMD  = 107
+        GET_POSSIBLE_PARAMS_CMD     = 108
+        POSSIBLE_PARAMS_RSP         = 109
+        REQ_CUSTOM_SCAN_CMD         = 110
+        CANCEL_CUSTOM_SCAN_CMD      = 111
+        SET_REPEATING_SCAN_CMD      = 112
+        CLEAR_REPEATING_SCAN_CMD    = 113
+        UPDATE_DEF_SCAN_PARAMS_CMD  = 114
+        GET_LAST_ACQ_FILE_CMD       = 115
+        LAST_ACQ_FILE_RSP           = 116
 
         # Mock message group 
         SET_MS_SCAN_LVL_CMD         = 200

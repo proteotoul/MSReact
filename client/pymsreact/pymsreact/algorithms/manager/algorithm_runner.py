@@ -174,6 +174,11 @@ class AlgorithmManager:
             success = False
             self.logger.error(f'Algorithm {algorithm} cannot be selected.')
         return success
+    
+    def acquisition_started(self):
+        """Method to signal to the algorithm that the instrument 
+        finished with the acquisition."""
+        self.acq_in_q.put((AcqMsgIDs.ACQUISITION_STARTED, None))
         
     def acquisition_ended(self):
         """Method to signal to the algorithm that the instrument 

@@ -29,17 +29,20 @@ class AcqMsgIDs(Enum):
     REQUEST_REPEATING_SCAN = 4
     CANCEL_REPEATING_SCAN = 5
     READY_FOR_ACQUISITION_START = 6
-    REQUEST_ACQUISITION_STOP = 7
-    ACQUISITION_ENDED = 8
-    ERROR = 9
-    REQUEST_DEF_SCAN_PARAM_UPDATE = 10
-    SET_TX_SCAN_LEVEL = 11
-    ENABLE_PLOT = 12
-    DISABLE_PLOT = 13
-    REQUEST_RAW_FILE_NAME = 14
-    REQUEST_LAST_RAW_FILE = 15
-    RAW_FILE_DOWNLOAD_FINISHED = 16
-    RECEIVED_RAW_FILE_NAMES = 17
+    ACQUISITION_STARTED = 7
+    REQUEST_ACQUISITION_STOP = 8
+    ACQUISITION_ENDED = 9
+    ERROR = 10
+    REQUEST_DEF_SCAN_PARAM_UPDATE = 11
+    SET_TX_SCAN_LEVEL = 12
+    ENABLE_PLOT = 13
+    DISABLE_PLOT = 14
+    REQUEST_RAW_FILE_NAME = 15
+    REQUEST_LAST_RAW_FILE = 16
+    RAW_FILE_DOWNLOAD_FINISHED = 17
+    RECEIVED_RAW_FILE_NAMES = 18
+    SUBSCRIBE_FOR_SCANS = 19
+    UNSUBSCRIBE_FROM_SCANS = 20
     
 class AcqStatIDs(Enum):
     """
@@ -122,6 +125,7 @@ class Acquisition:
         self.raw_file_names_lock = threading.Lock()
         self.raw_file_lock = threading.Lock()
         self.transfer_register_lock = threading.Lock()
+        self.acquisition_started = threading.Event()
         self.stop_listening = threading.Event()
         self.thread_exited_dirty = threading.Event()
         
@@ -332,6 +336,12 @@ class Acquisition:
         with self.transfer_register_lock:
             with open(self.transfer_register_file, "w") as outfile:
                 json.dump(self.transfer_register, outfile)
+
+    def subscribe_for_scans(self):
+        self.queue_out.put((AcqMsgIDs.SUBSCRIBE_FOR_SCANS, None))
+
+    def unsubscribe_from_scans(self):
+        self.queue_out.put((AcqMsgIDs.UNSUBSCRIBE_FROM_SCANS, None))
         
     def wait_for_end_or_error(self):
         """Wait until the acquisition ends or until an error occurs"""
@@ -368,6 +378,9 @@ class Acquisition:
                 continue
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
+            elif AcqMsgIDs.ACQUISITION_STARTED == cmd:
+                self.logger.info('Received acquisition started message.')
+                self.acquisition_started.set()
             elif AcqMsgIDs.RECEIVED_RAW_FILE_NAMES == cmd:
                 self.update_recent_raw_file_names(payload)
             elif AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED == cmd:
@@ -480,6 +493,9 @@ def acquisition_process(module_name,
             acquisition.logger.info('Signal "Ready for acquisition".')
             acquisition.set_tx_scan_interval()
             acquisition.signal_ready_for_acquisition()
+            while(not acquisition.acquisition_started.wait(0.001)):
+                time.sleep(0.001)
+            acquisition.subscribe_for_scans()
             acquisition.exec_acq_thread(intra_acq_thread)
 
             # After joining the acquisition thread, check if there are any scans left 
@@ -497,6 +513,8 @@ def acquisition_process(module_name,
                                     args=(acquisition.post_acquisition,),
                                     daemon=True)
                 acquisition.exec_acq_thread(post_acq_thread)
+                # Unsubscribe from scans
+                acquisition.subscribe_for_scans()
                 # Stop the message listening thread
                 acquisition.stop_listening.set()
                 msg_listener_thread.join()

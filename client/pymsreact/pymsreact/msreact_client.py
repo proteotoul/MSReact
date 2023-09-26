@@ -172,6 +172,9 @@ class MSReactClient:
         elif (instrument.InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD == msg_id):
             self.logger.info('Received acquisition file download finished message.')
             self.algo_manager.acquisition_file_download_finished(args)
+        elif (instrument.InstrMsgIDs.STARTED_ACQUISITION == msg_id):
+            self.logger.info('Received started acquisition message.')
+            self.algo_manager.acquisition_started()
         elif (instrument.InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
             self.logger.info('Received finished acquisition message.')
             self.algo_manager.acquisition_ended()
@@ -188,10 +191,9 @@ class MSReactClient:
         elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == msg_id):
             pass
         elif (AcqMsgIDs.READY_FOR_ACQUISITION_START == msg_id):
-            await self.inst_client.subscribe_to_scans()
+            #await self.inst_client.subscribe_to_scans()
             self.logger.info(f'{args.get_settings_dict()}')
             await self.inst_client.configure_acquisition(args.get_settings_dict())
-            
             if args is not None:
                 if args.acquisition_workflow.is_acquisition_triggering:
                     await self.inst_client.start_acquisition()
@@ -212,6 +214,10 @@ class MSReactClient:
             await self.inst_client.request_raw_file_name()
         elif (AcqMsgIDs.REQUEST_LAST_RAW_FILE == msg_id):
             await self.inst_client.request_last_acquisition_file(args)
+        elif (AcqMsgIDs.SUBSCRIBE_FOR_SCANS == msg_id):
+            await self.inst_client.subscribe_to_scans()
+        elif (AcqMsgIDs.UNSUBSCRIBE_FROM_SCANS == msg_id):
+            await self.inst_client.unsubscribe_from_scans()
         
     async def run_on_instrument(self, loop, args):
     

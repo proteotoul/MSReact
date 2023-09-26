@@ -14,8 +14,9 @@ class InstrMsgIDs(Enum):
     SCAN = 1
     RECEIVED_RAW_FILE_NAMES = 2
     FINISHED_ACQ_FILE_DOWNLOAD = 3
-    FINISHED_ACQUISITION = 4
-    ERROR = 5
+    STARTED_ACQUISITION = 4
+    FINISHED_ACQUISITION = 5
+    ERROR = 6
 
 class InstrumentClient:
     '''
@@ -428,7 +429,10 @@ class InstrumentClient:
                 self.resp = (msg, payload)
                 self.resp_cond.notify()
         elif ('EVT' == msg_type):
-            if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
+            if (self.proto.MessageIDs.STARTED_ACQ_EVT == msg):
+                self.logger.info('Start message received in instrument server manager')
+                self.app_cb(InstrMsgIDs.STARTED_ACQUISITION, None)
+            elif (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
                 self.logger.info('Finish message received in instrument server manager')
                 self.app_cb(InstrMsgIDs.FINISHED_ACQUISITION, None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
