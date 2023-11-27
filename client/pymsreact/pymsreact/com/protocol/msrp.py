@@ -1,6 +1,8 @@
 import msgpack
 from enum import IntEnum
-from .base import BaseProtocol
+from .base import BaseProtocol, ProtocolErrors, ProtocolException
+from ..transport.base import TransportException
+import logging
 
 class MSReactProtocol(BaseProtocol):
     """
@@ -44,8 +46,8 @@ class MSReactProtocol(BaseProtocol):
         # Instrument message group
         GET_AVAILABLE_INSTR_CMD     = 20
         AVAILABLE_INSTR_RSP         = 21
-        GET_INSTR_INFO_CMD          = 22
-        INSTR_INFO_RSP              = 23
+        GET_INSTR_TYPE_CMD          = 22
+        INSTR_TYPE_RSP              = 23
         GET_INSTR_STATE_CMD         = 24
         INSTR_STATE_RSP             = 25
         SELECT_INSTR_CMD            = 26
@@ -55,17 +57,20 @@ class MSReactProtocol(BaseProtocol):
         CONFIG_ACQ_CMD              = 100
         START_ACQ_CMD               = 101
         STOP_ACQ_CMD                = 102
-        FINISHED_ACQ_EVT            = 103
-        SUBSCRIBE_TO_SCANS_CMD      = 104
-        SCAN_EVT                    = 105
-        UNSUBSCRIBE_FROM_SCANS_CMD  = 106
-        GET_POSSIBLE_PARAMS_CMD     = 107
-        POSSIBLE_PARAMS_RSP         = 108
-        REQ_CUSTOM_SCAN_CMD         = 109
-        CANCEL_CUSTOM_SCAN_CMD      = 110
-        SET_REPEATING_SCAN_CMD      = 111
-        CLEAR_REPEATING_SCAN_CMD    = 112
-        UPDATE_DEF_SCAN_PARAMS_CMD  = 113
+        STARTED_ACQ_EVT             = 103
+        FINISHED_ACQ_EVT            = 104
+        SUBSCRIBE_TO_SCANS_CMD      = 105
+        SCAN_EVT                    = 106
+        UNSUBSCRIBE_FROM_SCANS_CMD  = 107
+        GET_POSSIBLE_PARAMS_CMD     = 108
+        POSSIBLE_PARAMS_RSP         = 109
+        REQ_CUSTOM_SCAN_CMD         = 110
+        CANCEL_CUSTOM_SCAN_CMD      = 111
+        SET_REPEATING_SCAN_CMD      = 112
+        CLEAR_REPEATING_SCAN_CMD    = 113
+        UPDATE_DEF_SCAN_PARAMS_CMD  = 114
+        GET_LAST_ACQ_FILE_CMD       = 115
+        LAST_ACQ_FILE_RSP           = 116
 
         # Mock message group 
         SET_MS_SCAN_LVL_CMD         = 200
@@ -73,26 +78,48 @@ class MSReactProtocol(BaseProtocol):
     
     def __init__(self, transport_layer):
         self.tl = transport_layer
+        self.logger = logging.getLogger(__name__)
+        
+    async def connect(self, address = None):
+        return await self.tl.connect(address)
+        
+    async def disconnect(self):
+        await self.tl.disconnect()
         
     async def send_message(self, msg, payload = None):
         if (msg in self.MessageIDs):
-            if (None == payload):
-                await self.tl.send(msg.to_bytes(1, 'big'))
-            else:
-                msg = msg.to_bytes(1, 'big') + msgpack.packb(payload)
-                await self.tl.send(msg)
+            try:
+                msg_packed = msg.to_bytes(1, 'big')
+                if None != payload:
+                    msg_packed = msg_packed + msgpack.packb(payload)
+                await self.tl.send(msg_packed)
+            except TransportException as tex:
+                raise ProtocolException("Error while trying to send message.", 
+                                        ProtocolErrors.TRANSPORT_ERROR) from tex
+            except Exception as ex:
+                raise ProtocolException("Error while trying send message.",
+                                        ProtocolErrors.MESSAGE_PACKING_ERROR) from ex
         else:
-            #TODO - Exception
-            pass
+            raise ProtocolException("Sending message failed: Incorrect message ID",
+                                    ProtocolErrors.MESSAGE_PACKING_ERROR)
     
     async def receive_message(self):
-        msg = await self.tl.receive()
-        # Parse messages
-        msg_id = self.MessageIDs(msg[0])
-        
-        if (1 < len(msg)):
-            payload = msgpack.unpackb(msg[1:])
-        else:
-            payload = None
+        msg_id = self.MessageIDs.ERROR_EVT
+        payload = None
+        try:
+            msg = await self.tl.receive()
+            # Parse messages
+            msg_id = self.MessageIDs(msg[0])
             
+            if (1 < len(msg)):
+                payload = msgpack.unpackb(msg[1:])
+        except TransportException as tex:
+            # Do not raise exception, an ERROR_EVT will be propagated to 
+            # to the higher level.
+            self.logger.error("Error while trying to receive message: " 
+                              + f"{tex}")
+        except Exception as ex:
+            raise ProtocolException("Error while trying parsing received message.",
+                                    ProtocolErrors.MESSAGE_PARSING_ERROR) from ex
         return (msg_id, payload)
+        

@@ -1,11 +1,18 @@
 from enum import IntEnum 
+import logging
 
 class TransportStates(IntEnum):
     DISCONNECTED    = 0
     CONNECTED       = 1
-    RECEIVE         = 2
-    SEND_MSG        = 3
-
+    RECONNECTING    = 2
+    RECEIVE         = 3
+    SEND_MSG        = 4
+    
+class TransportErrors(IntEnum):
+    NO_ERROR            = 0
+    INVALID_STATE_ERROR = 1
+    DISCONNECTION_ERROR = 2
+    
 class BaseTransport:
     """
     Abstract class for transport layers
@@ -29,6 +36,7 @@ class BaseTransport:
         """
         self.state = TransportStates.DISCONNECTED
         self.address = address
+        self.logger = logging.getLogger(__name__)
     async def __aenter__(self):
         return self
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -55,3 +63,11 @@ class BaseTransport:
     async def receive(self):
         """Listens for messages from the connected server"""
         pass
+        
+class TransportException(Exception):
+    def __init__(self, message, errors):
+        super().__init__(message)
+        self.errors = errors
+        self.logger = logging.getLogger("TransportException")
+        self.logger.error(f'TransportException, error code: {self.errors} ' +
+                          f'error name: {TransportErrors(self.errors).name}')

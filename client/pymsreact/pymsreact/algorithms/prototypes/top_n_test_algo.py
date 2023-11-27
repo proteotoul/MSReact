@@ -1,5 +1,6 @@
 from algorithms.manager.algorithm import Algorithm
 from algorithms.manager.acquisition import Acquisition, AcqStatIDs, ScanFields, CentroidFields
+import algorithms.manager.ms_instruments.mock_instrument as mi
 import algorithms.manager.ms_instruments.tribrid_instrument as ti
 import algorithms.manager.acquisition_workflow as aw
 import json
@@ -9,6 +10,7 @@ from datetime import datetime
 import csv
 # imports for deisotoping
 from utils.deisotoper_openms import DeisitoperOpenMS
+from utils.real_time_mgf import RealTimeMGFWriter
 
 # Acquisition settings
 ACQUISITION_WORKFLOW = aw.Listening
@@ -27,14 +29,15 @@ COMMENT = "This test is checking whether top N method " + \
 
 MZ_TOLERANCE = 0.0001 # Tolerance for the exclusion
 NUMBER_OF_PEAKS = 15 # Number of precursors to select for MS2
-EXCLUSION_TIME = 0.5 # Exclusion time in minutes
-#EXCLUSION_TIME = 0.02 # Exclusion time in minutes
+#EXCLUSION_TIME = 0.5 # Exclusion time in minutes
+EXCLUSION_TIME = 0.05 # Exclusion time in minutes TODO: Only for Mock
 
 class TopNAcquisition(Acquisition):
+    instruments = [mi.MockInstrument, ti.ThermoTribridInstrument]
+    
     def __init__(self, *args):
         super().__init__(*args)
         self.name = 'Test_TopN_acquisition'
-        self.instrument = ti.ThermoTribridInstrument()
         
     def pre_acquisition(self):
         self.logger.info('Executing pre-acquisition steps.')
@@ -62,97 +65,101 @@ class TopNAcquisition(Acquisition):
         rn = 1
         self.diagnostics = {}
         
-        while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
-            scan = self.fetch_received_scan()
-            
-            if ((scan is not None) and (2 == scan[ScanFields.MS_SCAN_LEVEL])):
-                num_received = num_received + 1
-            if ((scan is not None) and (1 == scan[ScanFields.MS_SCAN_LEVEL])):
-                time_of_algorithm = time.time()
-                self.logger.info(f'Received/Requested ratio = {num_received}/{num_requests}, ' +
-                                 f'Last running number: {rn}, ' +
-                                 f'Exclusion list length: {len(exclusion_list)}')
-                self.diagnostics.update({scan[ScanFields.SCAN_NUMBER] : {'NumReceived' : num_received,
-                                                                         'CentroidCount' : scan[ScanFields.CENTROID_COUNT]}})
-                num_received = 0
-                num_requests = 0
+        writer = RealTimeMGFWriter("test.mgf")
+        
+        with writer:
+            while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
+                scan = self.fetch_received_scan()
                 
-                # Get current time
-                current_rt = scan[ScanFields.RETENTION_TIME]
-                
-                # Remove expired centroids from the exclusion list
-                cutoff = 0 # This assignment is necessary in case of empty exclusion list.
-                while cutoff < len(exclusion_list):
-                    if abs(current_rt - exclusion_list[cutoff]["ExclusionTime"]) < EXCLUSION_TIME:
-                        break
-                    cutoff = cutoff + 1
-                exclusion_list = exclusion_list[cutoff:]
-                        
-                # Get centroids from the scan
-                centroids = scan[ScanFields.CENTROIDS]
-                # Get mzs and intensities from centroids
-                mzs = [centroid[CentroidFields.MZ] for centroid in centroids]
-                intensities = [centroid[CentroidFields.INTENSITY] for centroid in centroids]
-                
-                # Do deisotoping
-                mzs, intensities = deisotoper.deisotope_peaks(mzs, intensities)
-                
-                # Combine the mzs and intensities in to a list of dicts
-                centroids = [{CentroidFields.MZ : mzs[i], 
-                              CentroidFields.INTENSITY: intensities[i] } 
-                             for i in range(len(mzs))]
-                
-                # Find Cytochrome C peptides
-                # peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
-                #            584.8147, 390.2122, 390.2278]
-                #for peptide in peptides:
-                #    cyto_centroid = \
-                #        next((c for c in centroids if 0.01 > abs(c[CentroidFields.MZ] - peptide)), None)
-                #    if cyto_centroid is not None:
-                #        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
-                
-                # Sort centroids by their intensity
-                centroids.sort(key=lambda i: i[CentroidFields.INTENSITY], reverse=True)
-                
-                # TODO: This code might be written nicer and shorter with some list comprehension
-                i = 0
-                excl_list_buffer = []
-                while ((i < len(centroids)) and (len(excl_list_buffer) != NUMBER_OF_PEAKS)):
-                    not_excluded = True
-                    for centroid_excl in exclusion_list:
-                        if MZ_TOLERANCE > abs(centroids[i][CentroidFields.MZ] - centroid_excl[CentroidFields.MZ]):
-                            not_excluded = False # it is excluded
+                if ((scan is not None) and (2 == scan[ScanFields.MS_SCAN_LEVEL])):
+                    writer.write_scan(scan)
+                    num_received = num_received + 1
+                if ((scan is not None) and (1 == scan[ScanFields.MS_SCAN_LEVEL])):
+                    time_of_algorithm = time.time()
+                    self.logger.info(f'Received/Requested ratio = {num_received}/{num_requests}, ' +
+                                     f'Last running number: {rn}, ' +
+                                     f'Exclusion list length: {len(exclusion_list)}')
+                    self.diagnostics.update({scan[ScanFields.SCAN_NUMBER] : {'NumReceived' : num_received,
+                                                                             'CentroidCount' : scan[ScanFields.CENTROID_COUNT]}})
+                    num_received = 0
+                    num_requests = 0
+                    
+                    # Get current time
+                    current_rt = scan[ScanFields.RETENTION_TIME]
+                    
+                    # Remove expired centroids from the exclusion list
+                    cutoff = 0 # This assignment is necessary in case of empty exclusion list.
+                    while cutoff < len(exclusion_list):
+                        if abs(current_rt - exclusion_list[cutoff]["ExclusionTime"]) < EXCLUSION_TIME:
                             break
-                    if not_excluded:
-                        self.request_custom_scan({"PrecursorMass": str(centroids[i][CentroidFields.MZ]),
-                                                  "ScanType": "MSn",
-                                                  "AGCTarget": "100000",
-                                                  "MaxIT": "50", # Changed from 100 to 50
-                                                  #"Analyzer": "Orbitrap",
-                                                  "IsolationMode": "Quadrupole",
-                                                  #"OrbitrapResolution": "30000",
-                                                  "ActivationType": "HCD",
-                                                  "FirstMass": "100",
-                                                  "LastMass": "2000",
-                                                  "IsolationWidth": "1",
-                                                  "CollisionEnergy": "30",
-                                                  "REQUEST_ID": "_".join([str(scan[ScanFields.SCAN_NUMBER]), str(rn)]),
-                                                  })
-                                                  
-                        centroid = centroids[i] | {"ExclusionTime" : current_rt}
-                        excl_list_buffer.append(centroid)
-                        num_requests = num_requests + 1
-                        rn = rn + 1
-                    i = i + 1
-                exclusion_list = exclusion_list + excl_list_buffer
-                algo_time = time.time() - time_of_algorithm
-                self.logger.info(f'Run time of algorithm: {algo_time}[s]')
-                self.diagnostics[scan[ScanFields.SCAN_NUMBER]].update({"AlgoTime" : algo_time,
-                                                                       "NumRequests" : num_requests,
-                                                                       "ExclusionListLen" : len(exclusion_list),
-                                                                       "CentroidCountDeisotoped" : len(centroids)})
-            else:
-                pass
+                        cutoff = cutoff + 1
+                    exclusion_list = exclusion_list[cutoff:]
+                            
+                    # Get centroids from the scan
+                    centroids = scan[ScanFields.CENTROIDS]
+                    # Get mzs and intensities from centroids
+                    mzs = [centroid[CentroidFields.MZ] for centroid in centroids]
+                    intensities = [centroid[CentroidFields.INTENSITY] for centroid in centroids]
+                    
+                    # Do deisotoping
+                    mzs, intensities = deisotoper.deisotope_peaks(mzs, intensities)
+                    
+                    # Combine the mzs and intensities in to a list of dicts
+                    centroids = [{CentroidFields.MZ : mzs[i], 
+                                  CentroidFields.INTENSITY: intensities[i] } 
+                                 for i in range(len(mzs))]
+                    
+                    # Find Cytochrome C peptides
+                    # peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
+                    #            584.8147, 390.2122, 390.2278]
+                    #for peptide in peptides:
+                    #    cyto_centroid = \
+                    #        next((c for c in centroids if 0.01 > abs(c[CentroidFields.MZ] - peptide)), None)
+                    #    if cyto_centroid is not None:
+                    #        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
+                    
+                    # Sort centroids by their intensity
+                    centroids.sort(key=lambda i: i[CentroidFields.INTENSITY], reverse=True)
+                    
+                    # TODO: This code might be written nicer and shorter with some list comprehension
+                    i = 0
+                    excl_list_buffer = []
+                    while ((i < len(centroids)) and (len(excl_list_buffer) != NUMBER_OF_PEAKS)):
+                        not_excluded = True
+                        for centroid_excl in exclusion_list:
+                            if MZ_TOLERANCE > abs(centroids[i][CentroidFields.MZ] - centroid_excl[CentroidFields.MZ]):
+                                not_excluded = False # it is excluded
+                                break
+                        if not_excluded:
+                            self.request_custom_scan({"PrecursorMass": str(centroids[i][CentroidFields.MZ]),
+                                                      "ScanType": "MSn",
+                                                      "AGCTarget": "100000",
+                                                      "MaxIT": "50", # Changed from 100 to 50
+                                                      #"Analyzer": "Orbitrap",
+                                                      "IsolationMode": "Quadrupole",
+                                                      #"OrbitrapResolution": "30000",
+                                                      "ActivationType": "HCD",
+                                                      "FirstMass": "100",
+                                                      "LastMass": "2000",
+                                                      "IsolationWidth": "1",
+                                                      "CollisionEnergy": "30",
+                                                      "REQUEST_ID": "_".join([str(scan[ScanFields.SCAN_NUMBER]), str(rn)]),
+                                                      })
+                                                      
+                            centroid = centroids[i] | {"ExclusionTime" : current_rt}
+                            excl_list_buffer.append(centroid)
+                            num_requests = num_requests + 1
+                            rn = rn + 1
+                        i = i + 1
+                    exclusion_list = exclusion_list + excl_list_buffer
+                    algo_time = time.time() - time_of_algorithm
+                    self.logger.info(f'Run time of algorithm: {algo_time}[s]')
+                    self.diagnostics[scan[ScanFields.SCAN_NUMBER]].update({"AlgoTime" : algo_time,
+                                                                           "NumRequests" : num_requests,
+                                                                           "ExclusionListLen" : len(exclusion_list),
+                                                                           "CentroidCountDeisotoped" : len(centroids)})
+                else:
+                    pass
         
         self.logger.info('Finishing intra acquisition.')
     

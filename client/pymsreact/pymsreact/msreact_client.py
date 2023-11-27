@@ -14,10 +14,15 @@ import traceback
 from algorithms.manager.acquisition import AcqMsgIDs
 from algorithms.manager.algorithm_runner import AlgorithmManager
 from custom_apps.manager import CustomAppManager
+from enum import IntEnum
 
 import cProfile
 
 VERSION = 'v0.0'
+
+class ClientStates(IntEnum):
+    NO_ERROR    = 0
+    ERROR       = 1
 
 class MSReactClient:
 
@@ -43,6 +48,8 @@ class MSReactClient:
         # Instantiate the algorithm and custom app managers
         self.algo_manager = AlgorithmManager(self.algorithm_runner_cb)
         self.cusom_app_manager = CustomAppManager()
+        
+        self.state = ClientStates.NO_ERROR
         
     def parse_client_arguments(self):
         # Top level parser
@@ -74,6 +81,12 @@ class MSReactClient:
                                 dest = 'config',
                                 help='configuration json file to pass into the \
                                       algorithm')
+        
+        parser_run.add_argument('-s',
+                                metavar = 'sequence',
+                                dest = 'sequence',
+                                help='sequence file exported in csv format to \
+                                      enable dynamic acquisition sequence execution')
 
         # Parser for sub-command "proto"
         proto_choices = \
@@ -89,6 +102,12 @@ class MSReactClient:
                                   dest = 'config',
                                   help='configuration json file to pass into \
                                   the algorithm')
+        
+        parser_proto.add_argument('-s',
+                                metavar = 'sequence',
+                                dest = 'sequence',
+                                help='sequence file exported in csv format to \
+                                      enable dynamic acquisition sequence execution')
                                   
         parser_proto.add_argument('alg', choices = proto_choices,
                                  metavar = 'algorithm', default = 'monitor',
@@ -147,12 +166,22 @@ class MSReactClient:
     def instrument_client_cb(self, msg_id, args = None):
         if (instrument.InstrMsgIDs.SCAN == msg_id):
             self.algo_manager.deliver_scan(args)
+        elif (instrument.InstrMsgIDs.RECEIVED_RAW_FILE_NAMES == msg_id):
+            self.logger.info(f'Received recent raw file names:{args}')
+            self.algo_manager.received_recent_raw_file_names(args)
+        elif (instrument.InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD == msg_id):
+            self.logger.info('Received acquisition file download finished message.')
+            self.algo_manager.acquisition_file_download_finished(args)
+        elif (instrument.InstrMsgIDs.STARTED_ACQUISITION == msg_id):
+            self.logger.info('Received started acquisition message.')
+            self.algo_manager.acquisition_started()
         elif (instrument.InstrMsgIDs.FINISHED_ACQUISITION == msg_id):
             self.logger.info('Received finished acquisition message.')
             self.algo_manager.acquisition_ended()
         elif (instrument.InstrMsgIDs.ERROR == msg_id):
-            self.logger.error(f'Receved error message from instrument: {args}')
+            self.logger.error(f'Received error message from instrument: {args}')
             self.algo_manager.instrument_error()
+            self.state = ClientStates.ERROR
         
     async def algorithm_runner_cb(self, msg_id, args = None):
         if (AcqMsgIDs.REQUEST_SCAN == msg_id):
@@ -162,7 +191,7 @@ class MSReactClient:
         elif (AcqMsgIDs.CANCEL_REPEATING_SCAN == msg_id):
             pass
         elif (AcqMsgIDs.READY_FOR_ACQUISITION_START == msg_id):
-            await self.inst_client.subscribe_to_scans()
+            #await self.inst_client.subscribe_to_scans()
             self.logger.info(f'{args.get_settings_dict()}')
             await self.inst_client.configure_acquisition(args.get_settings_dict())
             if args is not None:
@@ -177,8 +206,18 @@ class MSReactClient:
                 await self.inst_client.set_ms_scan_tx_level(args)
         elif (AcqMsgIDs.ERROR == msg_id):
             self.logger.error(args)
+            # Should let the instrument manager know that there was an error in
+            # the algorithm manager.
+            await self.inst_client.instrument_clean_up()
+            self.state = ClientStates.ERROR
         elif (AcqMsgIDs.REQUEST_RAW_FILE_NAME == msg_id):
             await self.inst_client.request_raw_file_name()
+        elif (AcqMsgIDs.REQUEST_LAST_RAW_FILE == msg_id):
+            await self.inst_client.request_last_acquisition_file(args)
+        elif (AcqMsgIDs.SUBSCRIBE_FOR_SCANS == msg_id):
+            await self.inst_client.subscribe_to_scans()
+        elif (AcqMsgIDs.UNSUBSCRIBE_FROM_SCANS == msg_id):
+            await self.inst_client.unsubscribe_from_scans()
         
     async def run_on_instrument(self, loop, args):
     
@@ -191,30 +230,34 @@ class MSReactClient:
                                         self.instrument_client_cb)
 
         self.logger.info(f'Instrument address: {args.address}')
+        
+        # Connect to the server
         success = await self.inst_client.connect_to_server(args.address)
         if success:
             self.logger.info("Successful connection to server!")
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            loop.create_task(self.inst_client.listen_for_messages())
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_client.select_instrument(1)
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = await self.inst_client.get_possible_params()
-            
-            # TODO: Instrument info should be collected and provided to the 
-            #       function later.
-            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
+            # Start listening for messages from the server, select instrument,
+            # and get possible parameters.
+            await self.inst_client.setup_instrument_connection(1)
+
+            # Get the type of the instrument
+            intr_type = await self.inst_client.get_instrument_type()
+
+            # Try to select the requested algorithm, and if the algorithm 
+            # selection was successful run the algorithm.
+            if self.algo_manager.select_algorithm(args.alg,
+                                                  args.config,
+                                                  intr_type,
+                                                  args.sequence):
                 await self.algo_manager.run_algorithm()
             else:
-                self.logger.error(f"Failed loading {args.alg}")
+                self.logger.error(f"Failed loading {args.alg} workflow.")
             
-            self.logger.info("Unsubscribe from scans.")
-            await self.inst_client.unsubscribe_from_scans()
-            self.logger.info("Disconnect from server.")
-            await self.inst_client.disconnect_from_server()
+            if self.state != ClientStates.ERROR:
+                await self.inst_client.instrument_clean_up()
+            self.logger.info("Client is shutting down.")
             
         else:
             self.logger.error("Connection Failed")
@@ -238,21 +281,29 @@ class MSReactClient:
             # Wait a bit after connection
             await asyncio.sleep(1)
             
-            loop.create_task(self.inst_client.listen_for_messages())
-            # Select instrument TODO - This should be instrument discovery
-            await self.inst_client.select_instrument(1)
-            
-            # Collect possible parameters for requesting custom scans
-            possible_params = await self.inst_client.get_possible_params()
-            
-            # TODO: Instrument info should be collected and provided to the 
-            #       function later.
-            if self.algo_manager.select_algorithm(args.alg, args.config, "Tribrid"):
+            # Start listening for messages from the server, select instrument,
+            # and get possible parameters.
+            await self.inst_client.setup_instrument_connection(1)
+
+            # Get the type of the instrument
+            intr_type = await self.inst_client.get_instrument_type()
+
+            if self.algo_manager.select_algorithm(args.alg,
+                                                  args.config,
+                                                  intr_type,
+                                                  args.sequence):
                 await self.algo_manager.run_algorithm()
-                await self.inst_client.request_shut_down_server()
             else:
-                self.logger.error(f"Failed loading {args.alg}")
-                self.inst_client.terminate_inst_server()
+                self.logger.error(f"Failed loading {args.alg} workflow.")
+                self.inst_client.terminate_mock_server()
+                
+            self.logger.info("Unsubscribe from scans.")
+            await self.inst_client.unsubscribe_from_scans()
+            self.logger.info("Stop the listening loop.")
+            listening_task.cancel()
+            self.logger.info("Request shut down of mock server.")
+            await self.inst_client.request_shut_down_server()
+            self.logger.info("Client is shutting down.")
         else:
             self.logger.error("Connection Failed")
             self.inst_client.terminate_mock_server()
@@ -277,19 +328,23 @@ class MSReactClient:
                 # Wait a bit after connection
                 await asyncio.sleep(1)
                 
-                loop.create_task(self.inst_client.listen_for_messages())
-                # Select instrument TODO - This should be instrument discovery
-                await self.inst_client.select_instrument(1)
-                
-                # Collect possible parameters for requesting custom scans
-                possible_params = await self.inst_client.get_possible_params()
-                
-                # TODO: Instrument info should be collected and provided to the 
-                #       function later.
-                if self.algo_manager.select_algorithm(args.suite, args.config, "Tribrid"):
+                await self.inst_client.setup_instrument_connection(1)
+
+                # Get the type of the instrument
+                intr_type = await self.inst_client.get_instrument_type()
+
+                if self.algo_manager.select_algorithm(args.suite, args.config, intr_type):
                     await self.algo_manager.run_algorithm()
                 else:
-                    self.logger.error(f"Failed loading {args.suite}")
+                    self.logger.error(f"Failed loading {args.suite} workflow.")
+                    
+                self.logger.info("Unsubscribe from scans.")
+                await self.inst_client.unsubscribe_from_scans()
+                self.logger.info("Stop the listening loop.")
+                listening_task.cancel()
+                self.logger.info("Disconnect from server.")
+                await self.inst_client.disconnect_from_server()
+                self.logger.info("Client is shutting down.")
                 
             else:
                 self.logger.error("Connection Failed")
@@ -336,6 +391,7 @@ if __name__ == "__main__":
         try:
             loop.run_until_complete(client.run_on_instrument(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('proto' == args.command):
@@ -349,11 +405,13 @@ if __name__ == "__main__":
                 client.logger.error('Please select a mode to run the selected' +
                                     ' algorithm prototype. See help [-h].')
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('test' == args.command):
         try:
             loop.run_until_complete(client.test_app(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()

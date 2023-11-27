@@ -1,3 +1,4 @@
+import traceback
 from .ms_instruments.ms_instrument import MassSpectrometerInstrument
 from . import acquisition_workflow as aw
 from . import acquisition_settings as acqs
@@ -14,6 +15,9 @@ from enum import Enum, IntEnum
 from abc import abstractmethod
 from concurrent.futures import ProcessPoolExecutor
 import asyncio
+from pprint import pformat
+
+from pyhocon import ConfigFactory
 
 class AcqMsgIDs(Enum):
     """
@@ -25,14 +29,20 @@ class AcqMsgIDs(Enum):
     REQUEST_REPEATING_SCAN = 4
     CANCEL_REPEATING_SCAN = 5
     READY_FOR_ACQUISITION_START = 6
-    REQUEST_ACQUISITION_STOP = 7
-    ACQUISITION_ENDED = 8
-    ERROR = 9
-    REQUEST_DEF_SCAN_PARAM_UPDATE = 10
-    SET_TX_SCAN_LEVEL = 11
-    ENABLE_PLOT = 12
-    DISABLE_PLOT = 13
-    REQUEST_RAW_FILE_NAME = 14
+    ACQUISITION_STARTED = 7
+    REQUEST_ACQUISITION_STOP = 8
+    ACQUISITION_ENDED = 9
+    ERROR = 10
+    REQUEST_DEF_SCAN_PARAM_UPDATE = 11
+    SET_TX_SCAN_LEVEL = 12
+    ENABLE_PLOT = 13
+    DISABLE_PLOT = 14
+    REQUEST_RAW_FILE_NAME = 15
+    REQUEST_LAST_RAW_FILE = 16
+    RAW_FILE_DOWNLOAD_FINISHED = 17
+    RECEIVED_RAW_FILE_NAMES = 18
+    SUBSCRIBE_FOR_SCANS = 19
+    UNSUBSCRIBE_FROM_SCANS = 20
     
 class AcqStatIDs(Enum):
     """
@@ -42,19 +52,19 @@ class AcqStatIDs(Enum):
     ACQUISITION_PRE_ACQUISITION = 2
     ACQUISITION_RUNNING = 3
     ACQUISITION_ENDED_NORMAL = 4
-    ACQUISITION_ENDED_ERROR = 5
-    ACQUISITION_POST_ACQUISITION = 6
+    ACQUISITION_POST_ACQUISITION = 5
+    ERROR = 6
     
 class ScanFields(IntEnum):
     """
-    Enum to decode receive scans
+    Enum to decode received scans
     """
     ACCESS_ID = 0
     CENTROID_COUNT = 1
     CENTROIDS = 2
     DETECTOR_NAME = 3
     MS_SCAN_LEVEL = 4
-    PRECURSOR_CHANGE = 5
+    PRECURSOR_CHARGE = 5
     PRECURSOR_MASS = 6
     RETENTION_TIME = 7
     SCAN_NUMBER = 8
@@ -89,7 +99,9 @@ class Acquisition:
        algorithm runner
     
     """
-
+    
+    TRANSFER_REGISTER_NAME = '.\\transfer_register.json'
+    instruments = [MassSpectrometerInstrument]
 
     def __init__(self, queue_in, queue_out):
         """
@@ -105,14 +117,25 @@ class Acquisition:
         self.name = DEFAULT_NAME
         self.scan_tx_interval = DEFAULT_SCAN_TX_INTERVAL
         
+        self.raw_file_name = ''
         self.queue_in = queue_in
         self.queue_out = queue_out
         self.scan_queue = queue.Queue()
         self.status_lock = threading.Lock()
+        self.raw_file_names_lock = threading.Lock()
+        self.raw_file_lock = threading.Lock()
+        self.transfer_register_lock = threading.Lock()
+        self.acquisition_started = threading.Event()
+        self.stop_listening = threading.Event()
+        self.thread_exited_dirty = threading.Event()
         
-        self.instrument = MassSpectrometerInstrument()
         self.settings = acqs.AcquisitionSettings()
         self.status = AcqStatIDs.ACQUISITION_IDLE
+        self.recent_raw_file_names = []
+        self.last_raw_file = ''
+        
+        self.transfer_register = {}
+        self.transfer_register_file = ''
         
         # Since the acquisition objects are instantiated in separate processes,
         # logging needs to be initialized. The log messages from the acquisition
@@ -121,22 +144,37 @@ class Acquisition:
         queue_handler = logging.handlers.QueueHandler(queue_out)
         root = logging.getLogger()
         # Remove the default stream handler to avoid duplicate printing
+        no_que_handler_exists = True
         for handler in root.handlers:
             if isinstance(handler, logging.StreamHandler):
                 root.removeHandler(handler)
-        root.addHandler(queue_handler)
-        root.setLevel(logging.DEBUG)
+            if isinstance(handler, logging.handlers.QueueHandler):
+                no_que_handler_exists = False
+        if no_que_handler_exists:
+            root.addHandler(queue_handler)
+            root.setLevel(logging.DEBUG)
+            
         self.logger = logging.getLogger(__name__)
         
-    def configure(self, fconf):
-        if fconf is not None:
-            with open(fconf) as f:
-                self.config = json.load(f)
-        else:
-            self.config = None
+    def configure(self, raw_file_name, configs, transfer_register):
+        self.raw_file_name = raw_file_name
+        
+        # Load configurations. The workflow configurations are overwritten by 
+        # acquisition task specific configurations.
+        self.config = {}
+        for config in configs:
+            if config is not None:
+                configtree = ConfigFactory.parse_file(config)
+                self.config.update(json.loads(json.dumps(configtree.as_plain_ordered_dict())))
+            
+        self.transfer_register_file = transfer_register
+        with open(transfer_register, 'r') as f:
+            self.transfer_register = json.load(f)
             
         self.logger.info('Acquisition was configured with the following ' +
-                         f'configuration: {self.config}')
+                         f'configuration:\n\t{pformat(self.config)}')
+        self.logger.info('The transfer register contains the following ' +
+                         f'information:\n\t{pformat(self.transfer_register)}')
     
     def fetch_received_scan(self):
         """Try to fetch a scan from the received scans queue. If the queue is 
@@ -220,8 +258,11 @@ class Acquisition:
         """
         self.queue_out.put((AcqMsgIDs.SET_TX_SCAN_LEVEL, self.scan_tx_interval))
         
-    def get_raw_file_name(self):
+    def get_recent_raw_file_names(self):
         self.queue_out.put((AcqMsgIDs.REQUEST_RAW_FILE_NAME, None))
+        
+    def get_last_raw_file(self, raw_file, target_dir):
+        self.queue_out.put((AcqMsgIDs.REQUEST_LAST_RAW_FILE, (raw_file, target_dir)))
         
     def signal_error_to_runner(self, error_msg):
         """Signal error to the algorithm runner
@@ -250,6 +291,57 @@ class Acquisition:
         # TODO - check if the new_status is valid element of the Enum
         with self.status_lock:
             self.acquisition_status = new_status
+
+    def update_recent_raw_file_names(self, raw_file_names):
+        with self.raw_file_names_lock:
+            self.recent_raw_file_names = raw_file_names
+    
+    def received_recent_rawfile_names(self):
+        raw_file_names_returned = False
+        with self.raw_file_names_lock:
+            if self.recent_raw_file_names != []:
+                raw_file_names_returned = True
+        return raw_file_names_returned
+        
+    def fetch_recent_raw_file_names(self):
+        with self.raw_file_names_lock:
+            recent_raw_file_names = self.recent_raw_file_names
+            self.recent_raw_file_names = []
+        return recent_raw_file_names
+            
+    def is_rawfile_downloaded(self):
+        download_finished = False
+        with self.raw_file_lock:
+            raw_file_path = self.last_raw_file
+            if self.last_raw_file != '':
+                download_finished = True
+
+        return download_finished
+        
+    def get_downloaded_raw_file_path(self):
+        with self.raw_file_lock:
+            raw_file_path = self.last_raw_file
+            self.last_raw_file = ''
+        return raw_file_path
+        
+    def update_raw_file_download_status(self, raw_file_path):
+        with self.raw_file_lock:
+            self.last_raw_file = raw_file_path
+            
+    def update_transfer_register(self, data):
+        with self.transfer_register_lock:
+            self.transfer_register.update(data)
+            
+    def save_transfer_register(self):
+        with self.transfer_register_lock:
+            with open(self.transfer_register_file, "w") as outfile:
+                json.dump(self.transfer_register, outfile)
+
+    def subscribe_for_scans(self):
+        self.queue_out.put((AcqMsgIDs.SUBSCRIBE_FOR_SCANS, None))
+
+    def unsubscribe_from_scans(self):
+        self.queue_out.put((AcqMsgIDs.UNSUBSCRIBE_FROM_SCANS, None))
         
     def wait_for_end_or_error(self):
         """Wait until the acquisition ends or until an error occurs"""
@@ -261,6 +353,10 @@ class Acquisition:
                 continue
             if AcqMsgIDs.SCAN == cmd:
                 self.scan_queue.put(payload)
+            elif AcqMsgIDs.RECEIVED_RAW_FILE_NAMES == cmd:
+                self.update_recent_raw_file_names(payload)
+            elif AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED == cmd:
+                self.update_raw_file_download_status(payload)
             elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
                 self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
                 break
@@ -269,6 +365,53 @@ class Acquisition:
                 break
             else:
                 pass
+
+    def listen_for_messages(self):
+        """Wait until the acquisition ends or until an error occurs"""
+        while True:
+            if self.stop_listening.is_set():
+                break
+            try:
+                cmd, payload = self.queue_in.get_nowait()
+            except queue.Empty:
+                time.sleep(0.001)
+                continue
+            if AcqMsgIDs.SCAN == cmd:
+                self.scan_queue.put(payload)
+            elif AcqMsgIDs.ACQUISITION_STARTED == cmd:
+                self.logger.info('Received acquisition started message.')
+                self.acquisition_started.set()
+            elif AcqMsgIDs.RECEIVED_RAW_FILE_NAMES == cmd:
+                self.update_recent_raw_file_names(payload)
+            elif AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED == cmd:
+                self.update_raw_file_download_status(payload)
+            elif AcqMsgIDs.ACQUISITION_ENDED == cmd:
+                self.update_acquisition_status(AcqStatIDs.ACQUISITION_ENDED_NORMAL)
+            elif AcqMsgIDs.ERROR == cmd:
+                self.update_acquisition_status(AcqStatIDs.ERROR)
+                break
+            else:
+                pass
+
+    def exec_acq_thread(self, acq_thread):
+        acq_thread.start()
+        while True:
+            if self.get_acquisition_status() == AcqStatIDs.ERROR:
+                break
+            elif ((acq_thread.name == 'intra_acquisition_thread') 
+                  & (self.get_acquisition_status() == AcqStatIDs.ACQUISITION_ENDED_NORMAL)):
+                break
+            elif ((acq_thread.name != 'intra_acquisition_thread')
+                  & acq_thread.is_alive()):
+                break
+            time.sleep(0.001)
+        acq_thread.join()
+
+    def acq_func_wrapper(self, acq_func):
+        try:
+            acq_func()
+        except Exception as e:
+            self.thread_exited_dirty.set()
         
     @abstractmethod
     def pre_acquisition(self):
@@ -287,12 +430,105 @@ class Acquisition:
         """Abstract method to be overriden with steps to execute after an
            acquisition"""
         pass
-        
+
 def acquisition_process(module_name,
                         acquisition_name,
+                        raw_file_name,
                         queue_in,
                         queue_out,
-                        fconf):
+                        configs,
+                        transfer_register):
+    """This method is responsible for executing the pre-, intra- and 
+       post-acquisition steps. The method is ran in a separate proccess.
+
+    Parameters
+    ----------
+    module_name : str
+        Name of the module from which the acquisition class will be imported.
+    acquisition_name : str
+        Name of the acquisition class to be executed by the acquisition_process.
+    queue_in : queue.Queue
+       Input queue through which the acquisition receives messages from the 
+       algorithm runner
+    queue_out : queue.Queue
+       Output queue through which the acquisition can send messages to the 
+       algorithm runner
+    """
+    try:
+        # Create and configure acquisition
+        module = importlib.import_module(module_name)
+        class_ = getattr(module, acquisition_name)
+        acquisition = class_(queue_in, queue_out)
+        acquisition.configure(raw_file_name, configs, transfer_register)
+
+        # Start listening for messages
+        msg_listener_thread = \
+            threading.Thread(name='pre_acquisition_thread',
+                            target=acquisition.listen_for_messages,
+                            daemon=True)
+        msg_listener_thread.start()
+        acquisition.logger.info('Starting pre-acquisition thread.')
+        pre_acq_thread = \
+            threading.Thread(name='pre_acquisition_thread',
+                            target=acquisition.acq_func_wrapper,
+                            args=(acquisition.pre_acquisition,),
+                            daemon=True)
+        acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
+        acquisition.exec_acq_thread(pre_acq_thread)
+        if ((acquisition.get_acquisition_status() != AcqStatIDs.ERROR) 
+            & (acquisition.thread_exited_dirty.is_set() != True)):
+            # Prepare intra-acquisition activities to be ran in a thread
+            # Start the thread, request acquisition start
+            acquisition.logger.info('Starting intra-acquisition thread.')
+            intra_acq_thread = \
+                threading.Thread(name='intra_acquisition_thread',
+                                target=acquisition.acq_func_wrapper,
+                                args=(acquisition.intra_acquisition,),
+                                daemon=True)
+            acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_RUNNING)
+            # TODO: The start of the intra acquisition thread could be done before or after
+            # the signaling to the client. Should be decided. Possible synchronisation of start
+            # could be considered.
+            # intra_acq_thread.start()
+            acquisition.logger.info('Signal "Ready for acquisition".')
+            acquisition.set_tx_scan_interval()
+            acquisition.signal_ready_for_acquisition()
+            while(not acquisition.acquisition_started.wait(0.001)):
+                time.sleep(0.001)
+            acquisition.subscribe_for_scans()
+            acquisition.exec_acq_thread(intra_acq_thread)
+
+            # After joining the acquisition thread, check if there are any scans left 
+            # in the scan queue. Since the acquisition thread is already 
+
+            # TODO: For now, it is the user's responsibility to check whether an error occured during
+            #       the acquisition and decide what kind of activities to carry out in each case.
+            if ((acquisition.get_acquisition_status() != AcqStatIDs.ERROR) &
+                (acquisition.thread_exited_dirty.is_set() != True)):
+                acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_POST_ACQUISITION)
+                acquisition.logger.info('Starting post-acquisition thread.')
+                post_acq_thread = \
+                    threading.Thread(name='post_acquisition_thread',
+                                    target=acquisition.acq_func_wrapper,
+                                    args=(acquisition.post_acquisition,),
+                                    daemon=True)
+                acquisition.exec_acq_thread(post_acq_thread)
+                # Unsubscribe from scans
+                acquisition.subscribe_for_scans()
+                # Stop the message listening thread
+                acquisition.stop_listening.set()
+                msg_listener_thread.join()
+                acquisition.save_transfer_register()
+    except Exception as e:
+        traceback.print_exc()
+        
+def acquisition_process_old(module_name,
+                        acquisition_name,
+                        raw_file_name,
+                        queue_in,
+                        queue_out,
+                        configs,
+                        transfer_register):
     """This method is responsible for executing the pre-, intra- and 
        post-acquisition steps. The method is ran in a separate proccess.
 
@@ -314,7 +550,7 @@ def acquisition_process(module_name,
     class_ = getattr(module, acquisition_name)
     acquisition = class_(queue_in, queue_out)
     
-    acquisition.configure(fconf)
+    acquisition.configure(raw_file_name, configs, transfer_register)
     acquisition.logger.info('Running pre acquisition.')
     acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_PRE_ACQUISITION)
     acquisition.pre_acquisition()
@@ -341,6 +577,12 @@ def acquisition_process(module_name,
     acquisition.wait_for_end_or_error()
     acquisition.logger.info('Received message to stop the acquisition.')
     intra_acq_thread.join()
+
+    # After joining the acquisition thread, check if there are any scans left 
+    # in the scan queue. Since the acquisition thread is already 
+
     # TODO: For now, it is the user's responsibility to check whether an error occured during
     #       the acquisition and decide what kind of activities to carry out in each case.
+    acquisition.update_acquisition_status(AcqStatIDs.ACQUISITION_POST_ACQUISITION)
     acquisition.post_acquisition()
+    acquisition.save_transfer_register()

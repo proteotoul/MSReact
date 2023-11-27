@@ -11,6 +11,7 @@ import os
 import pkgutil
 from .algorithm import Algorithm
 from pathlib import Path
+import json
         
 class AlgorithmManager:
     """
@@ -31,6 +32,9 @@ class AlgorithmManager:
     
     ALGO_LISTS = { 'releases' : RELEASES,
                    'prototypes' : PROTO_ALGORITHMS }
+                   
+    TRANSFER_REGISTER = '\\transfer_register.json'
+    TRANSFER_REGISTER_DEFAULTS = {"KEY" : "value"}
     
     
     def __init__(self, app_cb):
@@ -48,7 +52,9 @@ class AlgorithmManager:
         
         # Create process pool, listening event and queues for multiprocessing
         self.executor = ProcessPoolExecutor(max_workers=3)
-        self.listening = multiprocessing.Manager().Event()
+        #self.listening = multiprocessing.Manager().Event()
+        self.listening = asyncio.Event()
+        self.error = asyncio.Event()
         self.acq_in_q = multiprocessing.Manager().Queue()
         self.acq_out_q = multiprocessing.Manager().Queue()
         
@@ -116,20 +122,24 @@ class AlgorithmManager:
                             value is not Algorithm):
                             fconf = \
                                 self.__validate_fconf(current_dir + '\\'
-                                                      + info.name + '\\' 
+                                                      + info.name + '\\'
                                                       + subinfo.name
-                                                      + '.json')
+                                                      + '.hocon')
                             self.ALGO_LISTS[info.name].append((value, fconf))
     
-    def select_algorithm(self, algorithm, fconf, instrument_info):
+    def select_algorithm(self, 
+                         algorithm, 
+                         fconf, 
+                         instrument_type, 
+                         exp_seq_file=None):
         """Method to select the algorithm to run.
         
         Parameters
         ----------
         algorithm : str
             Name of the algorithm that is selected to be run.
-        instrument_info : str
-            Name of the available instrument.
+        instrument_type : str
+            Type of the available instrument.
         """
         self.logger.info(f'Selecting algorithm {algorithm}')
         success = True
@@ -138,12 +148,21 @@ class AlgorithmManager:
         if selected_algorithm is not None:
             
             self.algorithm = selected_algorithm()
+
+            # If an exported sequence file was provided, try to set the 
+            # sequence of acquisition tasks based on the exported sequence file.
+            if exp_seq_file is not None:
+                success = self.algorithm.set_acquisition_sequence(exp_seq_file)
             
-            for acquisition in selected_algorithm.ACQUISITION_SEQUENCE:
-                if instrument_info != acquisition.instrument.instrument_name:
+            for acquisition in self.algorithm.acquisition_sequence:
+                instrument_types = [x.instrument_name for x in acquisition.instruments]
+                if instrument_type not in instrument_types:
                     success = False
-                    self.logger.error(f'Available instrument {instrument_info}' +
-                                      f' not compatible with {selected_algorithm}.')
+                    self.logger.error(f'Available instrument {instrument_type}' +
+                                      f' not compatible with {acquisition.__name__}. ' +
+                                      f'The acquisition {acquisition.__name__} is ' +
+                                      'only compatible with these instruments: ' +
+                                      f'{instrument_types}')
                     break
                     
             if self.__validate_fconf(fconf) is not None:
@@ -155,11 +174,22 @@ class AlgorithmManager:
             success = False
             self.logger.error(f'Algorithm {algorithm} cannot be selected.')
         return success
+    
+    def acquisition_started(self):
+        """Method to signal to the algorithm that the instrument 
+        finished with the acquisition."""
+        self.acq_in_q.put((AcqMsgIDs.ACQUISITION_STARTED, None))
         
     def acquisition_ended(self):
         """Method to signal to the algorithm that the instrument 
         finished with the acquisition."""
         self.acq_in_q.put((AcqMsgIDs.ACQUISITION_ENDED, None))
+        
+    def acquisition_file_download_finished(self, file_path):
+        self.acq_in_q.put((AcqMsgIDs.RAW_FILE_DOWNLOAD_FINISHED, file_path))
+
+    def received_recent_raw_file_names(self, raw_file_names):
+        self.acq_in_q.put((AcqMsgIDs.RECEIVED_RAW_FILE_NAMES, raw_file_names))
         
     def deliver_scan(self, scan):
         """Method to forward scans received from the instrument to the algorithm.
@@ -176,25 +206,32 @@ class AlgorithmManager:
         """Method to signal to the algorithm that the other parts of the client or
         the server encountered an error."""
         self.acq_in_q.put((AcqMsgIDs.ERROR, None))
+        self.error.set()
         
     async def run_algorithm(self):
         """Method with which the application can start running the selected 
         algorithm."""
         # Note: Consider handling runtime error that can be raised if there is
         # no active event loop
+        no_error = True
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self.__process_acquisition_requests())
+            acq_req_task = loop.create_task(self.__process_acquisition_requests())
             await self.__execute_algorithm(loop)
         except Exception as e:
+            self.logger.error(f'An exception occured:')
             traceback.print_exc()
+            no_error = False
+        # Wait for the _process_acquisition_requests task to finish.
         self.listening.set()
+        await acq_req_task
+        return no_error
         
     def __validate_fconf(self, fconf):
         if fconf is not None:
             file = Path(fconf)
             validated_fconf = \
-                fconf if (file.is_file() and file.suffix == '.json') else None
+                fconf if (file.is_file() and file.suffix == '.hocon') else None
         else:
             validated_fconf = fconf
         return validated_fconf
@@ -208,35 +245,60 @@ class AlgorithmManager:
             The asyncio loop to execute the acquisition tasks on.
         
         """
-        i = 0
-        for acquisition in self.algorithm.acquisition_sequence:
-            self.logger.info(f'Running acquisition sequence: {i}')
-            self.current_acq = acquisition
-            await loop.run_in_executor(self.executor,
-                                       acquisition_process, 
-                                       acquisition.__module__,
-                                       acquisition.__name__,
-                                       self.acq_in_q, 
-                                       self.acq_out_q,
-                                       self.fconf)
-        self.logger.info(f'Algorithm execution ended.')
+        try:
+            # Create transfer register
+            transfer_register = os.getcwd() + self.TRANSFER_REGISTER
+            #if not os.path.isfile(transfer_register):
+            with open(transfer_register, 'w') as f:
+                json.dump(self.TRANSFER_REGISTER_DEFAULTS, f)
+            
+            # TODO - If there is a problem on the server side will the
+            #        chain of acquisitions just be executed anyway?
+            i = 0
+            for acquisition in self.algorithm.acquisition_sequence:
+                self.logger.info(f'Running acquisition {i + 1} from sequence')
+                self.current_acq = acquisition
+                await loop.run_in_executor(self.executor,
+                                           acquisition_process, 
+                                           acquisition.__module__,
+                                           acquisition.__name__,
+                                           self.algorithm.raw_file_names[i],
+                                           self.acq_in_q,
+                                           self.acq_out_q,
+                                           [self.fconf, self.algorithm.configs[i]],
+                                           transfer_register)
+                i = i + 1
+                if self.error.is_set():
+                    self.logger.info(f'Instrument error received, breaking the workflow execution loop.')
+                    break
+            self.logger.info(f'Algorithm execution ended.')
+        finally:
+            # Remove transfer register
+            if os.path.isfile(transfer_register):
+                os.remove(transfer_register)
+        
                                        
     async def __process_acquisition_requests(self):
-        """Private method, listens to requests from the acquisitions and forwards
-        them to the application."""
+        """Private method, listens to requests from the acquisitions and 
+        forwards them to the application."""
         try:
             self.logger.info(f'Process acquisition requests function entered.')
-            while not self.listening.is_set():
+            while True:
                 try:
-                    item = self.acq_out_q.get_nowait()
-                    if isinstance(item, logging.LogRecord):
-                        logger = logging.getLogger(item.name)
-                        logger.handle(item)
-                    else:
-                        await self.app_cb(*item)
+                    await self.__process_queue_items()
                 except Empty:
-                    pass
-                await asyncio.sleep(0.001)
+                    if self.listening.is_set():
+                        break
+                await asyncio.sleep(0)
             self.logger.info(f'Process acquisition requests loop exited.')
         except Exception as e:
+            self.logger.error(f'An exception occured:')
             traceback.print_exc()
+            
+    async def __process_queue_items(self):
+        item = self.acq_out_q.get_nowait()
+        if isinstance(item, logging.LogRecord):
+            logger = logging.getLogger(item.name)
+            logger.handle(item)
+        else:
+            await self.app_cb(*item)

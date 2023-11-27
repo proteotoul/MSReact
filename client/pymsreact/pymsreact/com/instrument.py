@@ -2,14 +2,21 @@ import asyncio
 import csv
 import logging
 import multiprocessing
+import time
+import os
+import requests
+from tqdm import *
 from enum import Enum
 from multiprocessing import Queue
 from queue import Empty, Full
 
 class InstrMsgIDs(Enum):
     SCAN = 1
-    FINISHED_ACQUISITION = 2
-    ERROR = 3
+    RECEIVED_RAW_FILE_NAMES = 2
+    FINISHED_ACQ_FILE_DOWNLOAD = 3
+    STARTED_ACQUISITION = 4
+    FINISHED_ACQUISITION = 5
+    ERROR = 6
 
 class InstrumentClient:
     '''
@@ -73,9 +80,9 @@ class InstrumentClient:
         
         if address is not None:
             self.address = address
-            success = await self.proto.tl.connect(self.address)
+            success = await self.proto.connect(self.address)
         else:
-            success = await self.proto.tl.connect()
+            success = await self.proto.connect()
         
         return success
         
@@ -83,7 +90,7 @@ class InstrumentClient:
         """ Disconnects from the server to which the client is currently 
         connected. """
         self.address = None
-        await self.proto.tl.disconnect()
+        await self.proto.disconnect()
         
     async def get_protocol_version(self):
         """Retrieves the protocol version of the server that is currently 
@@ -143,8 +150,8 @@ class InstrumentClient:
             pass
         return payload
         
-    async def get_instrument_info(self, instrument):
-        """Retreives information about a selected instrument.
+    async def get_instrument_type(self):
+        """Retreives the type of the instrument.
 
         Parameters
         ----------
@@ -157,13 +164,12 @@ class InstrumentClient:
             Information about the selected instrument.
         """
     
-        self.logger.info(f'Requesting info about instrument {instrument}')
+        self.logger.info(f'Requesting type of the instrument.')
         
-        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_INFO_CMD,
-                                      instrument)
+        await self.proto.send_message(self.proto.MessageIDs.GET_INSTR_TYPE_CMD)
         msg, payload = await self.__wait_for_response()
-        if (self.proto.MessageIDs.AVAILABLE_INSTR_RSP == msg):
-            self.logger.info(f'Instrument info:\n{payload}')
+        if (self.proto.MessageIDs.INSTR_TYPE_RSP == msg):
+            self.logger.info(f'Instrument type: {payload}')
         else:
             pass
         return payload
@@ -324,7 +330,7 @@ class InstrumentClient:
         
     async def start_acquisition(self):
         """Requests the start of an acquisition from server."""
-        self.logger.info('Start transferring scans from the raw file by the mock')
+        self.logger.info('Start receiving scans from the instrument')
         await self.proto.send_message(self.proto.MessageIDs.START_ACQ_CMD)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
@@ -333,7 +339,7 @@ class InstrumentClient:
             
     async def stop_acquisition(self):
         """Requests the stop of the current acquisition from server."""
-        self.logger.info('Stop transferring scans from the raw file by the mock')
+        self.logger.info('Stop receiving scans from the instrument')
         await self.proto.send_message(self.proto.MessageIDs.STOP_ACQ_CMD)
         msg, payload = await self.__wait_for_response()
         if (self.proto.MessageIDs.OK_RSP != msg):
@@ -355,46 +361,89 @@ class InstrumentClient:
             raise Exception("Problem with updating default scan parameters.")
             
     async def request_raw_file_name(self):
-        self.logger.info('Requesting raw file name from the mock.')
-        raw_file_id = ""
+        """Requests the name of the current acquisitions raw file"""
+        self.logger.info('Requesting recent raw file names from the instrument.')
         await self.proto.send_message(self.proto.MessageIDs.GET_ACQ_RAW_FILE_NAME)
         msg, payload = await self.__wait_for_response()
-        if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP != msg):
+        if (self.proto.MessageIDs.ACQ_RAW_FILE_NAME_RSP == msg):
+            self.app_cb(InstrMsgIDs.RECEIVED_RAW_FILE_NAMES, payload)
+        else:
             self.logger.error("Problem with getting raw file name!")
             raise Exception("Problem with getting raw file name!")
+        
+    async def request_last_acquisition_file(self, args):
+        """Requests the raw file of the last acquisition"""
+        self.logger.info('Request latest acquisition raw file from server.')
+        raw_file = args[0]
+        target_dir = args[1]
+        await self.proto.send_message(self.proto.MessageIDs.GET_LAST_ACQ_FILE_CMD, raw_file)
+        time.sleep(1)
+        msg, payload = await self.__wait_for_response()
+        if (self.proto.MessageIDs.LAST_ACQ_FILE_RSP == msg):
+            file_path = self.__download(payload, target_dir)
+            self.app_cb(InstrMsgIDs.FINISHED_ACQ_FILE_DOWNLOAD, file_path)
         else:
-            raw_file_id = payload
-        return raw_file_id
-
+            self.logger.error("Problem with getting last acquisition raw file.")
+            raise Exception("Problem with getting last acquisition raw file.")
+        
+    async def setup_instrument_connection(self, inst_num):
+        # Start listening from messages from the client
+        loop = asyncio.get_running_loop()
+        self.listening_task = \
+            loop.create_task(self.listen_for_messages())
             
+        # Select instrument TODO - This should be instrument discovery, or simply
+        # assume that there is a separate computer for each mass spectrometer 
+        # instrument.
+        await self.select_instrument(inst_num)
+        
+        # Collect possible parameters for requesting custom scans
+        possible_params = await self.get_possible_params()
+        
+    async def instrument_clean_up(self):
+        self.logger.info("Unsubscribe from scans.")
+        await self.unsubscribe_from_scans()
+        self.logger.info("Stop the listening loop.")
+        self.listening_task.cancel()
+        self.logger.info("Disconnect from server.")
+        await self.disconnect_from_server()
+        
     async def listen_for_messages(self):
-        """Listens for messages from the server."""
-        self.listening = True
-        self.logger.info('Listening for messages started.')
-        while self.listening:
-            msg, payload = await self.proto.receive_message()
-            await self.__dispatch_message(msg, payload)
-        self.logger.info('Exited listening for messages loop.')
+        try:
+            """Listens for messages from the server."""
+            self.listening = True
+            self.logger.info('Listening for messages started.')
+            while self.listening:
+                msg, payload = await self.proto.receive_message()
+                self.listening = await self.__dispatch_message(msg, payload)
+        except asyncio.CancelledError as e:
+            self.logger.info('Cancellation request of listening for instrument messages received.')
+        finally:
+            self.logger.info('Exited listening for messages loop.')
     
     async def __dispatch_message(self, msg, payload):
+        no_error = True
         msg_type = msg.name[-3:]
         if ('RSP' == msg_type):
             async with self.resp_cond:
                 self.resp = (msg, payload)
                 self.resp_cond.notify()
         elif ('EVT' == msg_type):
-            if (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
+            if (self.proto.MessageIDs.STARTED_ACQ_EVT == msg):
+                self.logger.info('Start message received in instrument server manager')
+                self.app_cb(InstrMsgIDs.STARTED_ACQUISITION, None)
+            elif (self.proto.MessageIDs.FINISHED_ACQ_EVT == msg):
                 self.logger.info('Finish message received in instrument server manager')
                 self.app_cb(InstrMsgIDs.FINISHED_ACQUISITION, None)
             elif (self.proto.MessageIDs.SCAN_EVT == msg):
-                #self.logger.info('Scan received in instrument server manager')
                 self.app_cb(InstrMsgIDs.SCAN, payload)
             elif (self.proto.MessageIDs.ERROR_EVT == msg):
                 self.app_cb(InstrMsgIDs.ERROR, None)
+                no_error = False
         else:
             pass
-            
             # That is an error situation
+        return no_error
         
     async def __wait_for_response(self):
         async with self.resp_cond:
@@ -403,4 +452,29 @@ class InstrumentClient:
             self.resp = None
         self.logger.info(f'Response: {received_resp.name}')
         return received_resp, resp_payload
+            
+    def __download(self, url: str, dest_folder: str):
+        if not os.path.exists(dest_folder):
+            os.makedirs(dest_folder)  # create folder if it does not exist
+
+        filename = url.split('/')[-1].replace(" ", "_")  # be careful with file names
+        file_path = os.path.join(dest_folder, filename)
+
+        r = requests.get(url, stream=True)
+        if r.ok:
+            self.logger.info(f"Saving to {os.path.abspath(file_path)}")
+            with open(file_path, 'wb') as f:
+                pbar = tqdm(total=int(r.headers['Content-Length']))
+                for chunk in r.iter_content(chunk_size=1024 * 8):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()
+                        os.fsync(f.fileno())
+                        pbar.update(len(chunk))
+        else:  # HTTP status code 4XX/5XX
+            self.logger.info(f"Download failed: status code {r.status_code}\n{r.text}")
+            
+        return file_path if r.ok else ''
+        
+    
    

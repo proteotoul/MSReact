@@ -3,6 +3,7 @@
 import asyncio
 import msreact_client
 import pathlib
+import traceback
 
 def main():
     # Create output and log folder if it doesn't exist yet
@@ -16,6 +17,7 @@ def main():
         try:
             loop.run_until_complete(client.run_on_instrument(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('proto' == args.command):
@@ -29,12 +31,14 @@ def main():
                 client.logger.error('Please select a mode to run the selected' +
                                     ' algorithm prototype. See help [-h].')
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
     elif ('test' == args.command):
         try:
             loop.run_until_complete(client.test_app(loop, args))
         except Exception as e:
+            client.logger.error(f'Exception occured:')
             traceback.print_exc()
             loop.stop()
 
