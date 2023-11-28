@@ -514,6 +514,7 @@ def acquisition_process(module_name,
                                     daemon=True)
                 acquisition.exec_acq_thread(post_acq_thread)
                 # Unsubscribe from scans
+                # TODO: Shouldn't this unsubscribe from scans?
                 acquisition.subscribe_for_scans()
                 # Stop the message listening thread
                 acquisition.stop_listening.set()
