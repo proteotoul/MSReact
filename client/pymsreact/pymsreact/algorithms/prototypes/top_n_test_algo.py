@@ -8,20 +8,14 @@ import logging
 import time
 from datetime import datetime
 import csv
-# imports for deisotoping
 from utils.deisotoper_openms import DeisitoperOpenMS
 from utils.real_time_mgf import RealTimeMGFWriter
 
 # Acquisition settings
 ACQUISITION_WORKFLOW = aw.Listening
 ACQUISITION_PARAMETER = None
-
-#ACQUISITION_WORKFLOW = aw.Method
-# That location should be on the server computer for the moment
-# TODO: Think about how to transfer file through websocket
-#ACQUISITION_PARAMETER = 'D:\\dev\\ms-reactor\\top_n_test.meth'
 SINGLE_PROCESSING_DELAY = 0
-WAIT_FOR_CONTACT_CLOSURE = False
+WAIT_FOR_CONTACT_CLOSURE = True
 RAW_FILE_NAME = "top_n_test.RAW"
 SAMPLE_NAME = "-"
 COMMENT = "This test is checking whether top N method " + \
@@ -29,8 +23,7 @@ COMMENT = "This test is checking whether top N method " + \
 
 MZ_TOLERANCE = 0.0001 # Tolerance for the exclusion
 NUMBER_OF_PEAKS = 15 # Number of precursors to select for MS2
-#EXCLUSION_TIME = 0.5 # Exclusion time in minutes
-EXCLUSION_TIME = 0.05 # Exclusion time in minutes TODO: Only for Mock
+EXCLUSION_TIME = 0.5 # Exclusion time in minutes
 
 class TopNAcquisition(Acquisition):
     instruments = [mi.MockInstrument, ti.ThermoTribridInstrument]
@@ -65,7 +58,7 @@ class TopNAcquisition(Acquisition):
         rn = 1
         self.diagnostics = {}
         
-        writer = RealTimeMGFWriter("test.mgf")
+        writer = RealTimeMGFWriter("output/test.mgf")
         
         with writer:
             while AcqStatIDs.ACQUISITION_RUNNING == self.get_acquisition_status():
@@ -108,15 +101,7 @@ class TopNAcquisition(Acquisition):
                     centroids = [{CentroidFields.MZ : mzs[i], 
                                   CentroidFields.INTENSITY: intensities[i] } 
                                  for i in range(len(mzs))]
-                    
-                    # Find Cytochrome C peptides
-                    # peptides = [403.7422, 381.7473, 792.8863, 528.9266, 717.9012,
-                    #            584.8147, 390.2122, 390.2278]
-                    #for peptide in peptides:
-                    #    cyto_centroid = \
-                    #        next((c for c in centroids if 0.01 > abs(c[CentroidFields.MZ] - peptide)), None)
-                    #    if cyto_centroid is not None:
-                    #        self.logger.info(f'Found cyto C peptide after deisotoping. Theoretical pepmass: {peptide}, found pepmass: {cyto_centroid}')
+
                     
                     # Sort centroids by their intensity
                     centroids.sort(key=lambda i: i[CentroidFields.INTENSITY], reverse=True)
@@ -134,10 +119,8 @@ class TopNAcquisition(Acquisition):
                             self.request_custom_scan({"PrecursorMass": str(centroids[i][CentroidFields.MZ]),
                                                       "ScanType": "MSn",
                                                       "AGCTarget": "100000",
-                                                      "MaxIT": "50", # Changed from 100 to 50
-                                                      #"Analyzer": "Orbitrap",
+                                                      "MaxIT": "50",
                                                       "IsolationMode": "Quadrupole",
-                                                      #"OrbitrapResolution": "30000",
                                                       "ActivationType": "HCD",
                                                       "FirstMass": "100",
                                                       "LastMass": "2000",
@@ -153,7 +136,6 @@ class TopNAcquisition(Acquisition):
                         i = i + 1
                     exclusion_list = exclusion_list + excl_list_buffer
                     algo_time = time.time() - time_of_algorithm
-                    self.logger.info(f'Run time of algorithm: {algo_time}[s]')
                     self.diagnostics[scan[ScanFields.SCAN_NUMBER]].update({"AlgoTime" : algo_time,
                                                                            "NumRequests" : num_requests,
                                                                            "ExclusionListLen" : len(exclusion_list),
@@ -166,7 +148,6 @@ class TopNAcquisition(Acquisition):
     def post_acquisition(self):
         self.logger.info('Executing post-acquisition steps.')
         now = datetime.now()
-        #print(self.diagnostics)
         with open(f'output/diagnostics_{now.strftime("%Y%m%d_%H%M")}.csv', 'w') as f:
             f.write("ScanNum,NumReceived,CentroidCount,AlgoTime,NumRequests,ExclusionListLen,CentroidCountDeisotoped\n")
             for key in self.diagnostics.keys():
@@ -174,15 +155,14 @@ class TopNAcquisition(Acquisition):
                 for subkey in self.diagnostics[key]:
                     line += f'{self.diagnostics[key][subkey]},'
                 f.write(line + '\n')
-                    #f.write("%s, %s\n" % (key, self.diagnostics[key]))
         
 
 class TopNTestAlgorithm(Algorithm):
 
     """Method - TODO: Create default method based on real method."""
-    DEFAULT_ACQUISITION_METHODS = {}
+    ACQUISITION_METHOD = {}
     """Sequence - TODO: Create default method based on real method."""
-    DEFAULT_ACQUISITION_SEQUENCE = {}
+    ACQUISITION_SEQUENCE = [ TopNAcquisition ]
     """Cycle interval - TODO: This is only for mock."""
     CYCLE_INTERVAL = 10
     """Name of the algorithm. This is a mandatory field for the algorithms"""
@@ -198,7 +178,8 @@ class TopNTestAlgorithm(Algorithm):
     
     def __init__(self):
         super().__init__()
-        self.acquisition_methods = self.DEFAULT_ACQUISITION_METHODS
+        self.acquisition_methods = self.ACQUISITION_METHOD
         self.acquisition_sequence = [ TopNAcquisition ]
+        self.configs = [ None ]
         self.logger = logging.getLogger(__name__)
         

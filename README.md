@@ -45,7 +45,7 @@ The MSReact Python Client provides a framework to create novel intelligent mass 
         self.acquisition_sequence = [ YourAcquisition1, YourAcquisition2 ]
 	```
 
-	For further inspiration, check out the top_n_algorithm module.
+	For further inspiration, check out the top_n_test_algo module.
 
 **Running the created workflows**
 * The created algorithms are discovered by the Python client. 
