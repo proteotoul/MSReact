@@ -8,7 +8,6 @@ import logging
 import time
 from datetime import datetime
 import csv
-from utils.deisotoper_openms import DeisitoperOpenMS
 from utils.real_time_mgf import RealTimeMGFWriter
 
 # Acquisition settings
@@ -49,7 +48,6 @@ class TopNAcquisition(Acquisition):
     def intra_acquisition(self):
         self.logger.info('Executing intra-acquisition steps.')
         scans = []
-        deisotoper = DeisitoperOpenMS()
         
         exclusion_list = []
         num_requests = 0
@@ -94,9 +92,6 @@ class TopNAcquisition(Acquisition):
                     mzs = [centroid[CentroidFields.MZ] for centroid in centroids]
                     intensities = [centroid[CentroidFields.INTENSITY] for centroid in centroids]
                     
-                    # Do deisotoping
-                    mzs, intensities = deisotoper.deisotope_peaks(mzs, intensities)
-                    
                     # Combine the mzs and intensities in to a list of dicts
                     centroids = [{CentroidFields.MZ : mzs[i], 
                                   CentroidFields.INTENSITY: intensities[i] } 
@@ -138,8 +133,7 @@ class TopNAcquisition(Acquisition):
                     algo_time = time.time() - time_of_algorithm
                     self.diagnostics[scan[ScanFields.SCAN_NUMBER]].update({"AlgoTime" : algo_time,
                                                                            "NumRequests" : num_requests,
-                                                                           "ExclusionListLen" : len(exclusion_list),
-                                                                           "CentroidCountDeisotoped" : len(centroids)})
+                                                                           "ExclusionListLen" : len(exclusion_list)})
                 else:
                     pass
         
@@ -149,7 +143,7 @@ class TopNAcquisition(Acquisition):
         self.logger.info('Executing post-acquisition steps.')
         now = datetime.now()
         with open(f'output/diagnostics_{now.strftime("%Y%m%d_%H%M")}.csv', 'w') as f:
-            f.write("ScanNum,NumReceived,CentroidCount,AlgoTime,NumRequests,ExclusionListLen,CentroidCountDeisotoped\n")
+            f.write("ScanNum,NumReceived,CentroidCount,AlgoTime,NumRequests,ExclusionListLen\n")
             for key in self.diagnostics.keys():
                 line = f"{key},"
                 for subkey in self.diagnostics[key]:
