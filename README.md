@@ -21,28 +21,28 @@ The MSReact Python Client provides a framework to create novel intelligent mass 
 	```
 	class YourAcquisition(Acquisition):
     
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.name = 'template_acquisition'
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.name = 'template_acquisition'
         
-    def pre_acquisition(self):
-	    # Load data from file before acquisition
-		...
-	def intra_acquisition(self):
-		# While the acquisition is running, request MS1 scans, analyse received
-		# MS1 scans and request MS2 scans based on the decision.
-		...
-	def post_acquisition(self):
-		# Save data to file after acquisition
-		...
+        def pre_acquisition(self):
+	        # Load data from file before acquisition
+	        ...
+	    def intra_acquisition(self):
+	        # While the acquisition is running, request MS1 scans, analyse received
+	        # MS1 scans and request MS2 scans based on the decision.
+	        ...
+	    def post_acquisition(self):
+	        # Save data to file after acquisition
+	        ...
 	```
 * Add created acquisitions to the `acquisition_sequence` of the `Algorithm` class, that serves as a container for different acquisitions:
 	```
 	class YourAlgorithm(Algorithm):
 	
-		def __init__(self):
-        super().__init__()
-        self.acquisition_sequence = [ YourAcquisition1, YourAcquisition2 ]
+	    def __init__(self):
+            super().__init__()
+            self.acquisition_sequence = [ YourAcquisition1, YourAcquisition2 ]
 	```
 
 	For further inspiration, check out the top_n_test_algo module.
